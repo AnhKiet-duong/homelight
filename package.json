@@ -1,0 +1,12 @@
+{
+  "name": "my-gallery",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gallery ảnh tự host, không cần thư viện ngoài",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
