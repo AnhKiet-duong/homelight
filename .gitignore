@@ -1,4 +1,6 @@
+storage/
 uploads/
 data.json
 data.json.tmp
+data.json.migrated
 node_modules/

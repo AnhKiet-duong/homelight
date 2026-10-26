@@ -405,6 +405,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
     <span class="label">Tải ảnh lên</span>
   </button>
+  <a class="btn" href="account.html" id="navUser" title="Tài khoản">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+    <span class="label" id="navUserName">Tài khoản</span>
+  </a>
   <input id="file" type="file" accept="image/*" multiple hidden>
 </nav>
 
@@ -500,6 +504,7 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 // ---------- API (ảnh lưu trên server, xem server.js) ----------
 async function api(method, path, body, headers = {}) {
   const res = await fetch('/api/photos' + path, { method, body, headers });
+  if (res.status === 401) { location.href = '/login.html?next=/'; throw new Error('Cần đăng nhập'); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Lỗi ${res.status}`);
   return data;
@@ -973,6 +978,7 @@ async function load() {
 }
 movePill();
 load();
+fetch('/api/status').then(r => r.json()).then(s => { if (s.user) $('navUserName').textContent = s.user.username; }).catch(() => {});
 // Quay lại tab thì tải lại danh sách, để thấy ảnh mới thêm từ thiết bị khác
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !uploading) load();
