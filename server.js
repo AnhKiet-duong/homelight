@@ -107,6 +107,19 @@ function savePhotos(uid, list) {
   return writeJson(photosFile(uid), list);
 }
 
+// ---------- Album của từng người: users/<id>/albums.json ----------
+// [{ id, name, photoIds: [...], cover: photoId | null, created }] — album chỉ giữ id ảnh, không sao chép file
+const albumsFile = id => path.join(userDir(id), 'albums.json');
+const albumCache = new Map();
+function getAlbums(uid) {
+  if (!albumCache.has(uid)) albumCache.set(uid, readJson(albumsFile(uid), []));
+  return albumCache.get(uid);
+}
+function saveAlbums(uid, list) {
+  albumCache.set(uid, list);
+  return writeJson(albumsFile(uid), list);
+}
+
 // Ảnh từ bản cũ (uploads/ + data.json) được chuyển cho tài khoản quản trị đầu tiên
 async function migrateLegacy(uid) {
   const legacy = readJson(LEGACY_DATA_FILE, null);
@@ -351,6 +364,7 @@ async function authApi(req, res, parts, session) {
       await saveUsers();
       await dropSessions(user.id);
       photoCache.delete(user.id);
+      albumCache.delete(user.id);
       await fsp.rm(userDir(user.id), { recursive: true, force: true });
       return send(res, 200, { ok: true });
     }
@@ -440,10 +454,79 @@ async function photosApi(req, res, parts, uid) {
     return send(res, 200, photo);
   }
 
-  // DELETE /api/photos/:id
+  // DELETE /api/photos/:id — xoá luôn khỏi các album
   if (req.method === 'DELETE') {
     await savePhotos(uid, photos.filter(p => p.id !== id));
+    const albums = getAlbums(uid);
+    if (albums.some(a => a.photoIds.includes(id))) {
+      for (const a of albums) {
+        a.photoIds = a.photoIds.filter(x => x !== id);
+        if (a.cover === id) a.cover = null;
+      }
+      await saveAlbums(uid, albums);
+    }
     await fsp.unlink(path.join(imagesDir(uid), photo.file)).catch(() => {});
+    return send(res, 200, { ok: true });
+  }
+
+  send(res, 405, { error: 'Method not allowed' });
+}
+
+// ---------- API: album (của người đang đăng nhập) ----------
+function albumView(a, photos) {
+  const ids = a.photoIds.filter(id => photos.some(p => p.id === id));
+  const cover = photos.find(p => p.id === (ids.includes(a.cover) ? a.cover : ids[0]));
+  return { id: a.id, name: a.name, photoIds: ids, cover: cover ? cover.id : null, coverUrl: cover ? cover.url : null, created: a.created };
+}
+function albumName(v) {
+  const name = typeof v === 'string' ? v.trim().slice(0, 80) : '';
+  if (!name) throw httpError(400, 'Hãy đặt tên cho album');
+  return name;
+}
+function ownPhotoIds(v, photos) {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) throw httpError(400, 'Danh sách ảnh không hợp lệ');
+  return v.filter(id => photos.some(p => p.id === id));
+}
+
+async function albumsApi(req, res, parts, uid) {
+  if (parts.length > 3) throw httpError(404, 'Not found');
+  const id = parts[2];
+  const photos = getPhotos(uid);
+  const albums = getAlbums(uid);
+
+  // GET /api/albums
+  if (req.method === 'GET' && !id) return send(res, 200, albums.map(a => albumView(a, photos)));
+
+  // POST /api/albums — { name, photoIds? }
+  if (req.method === 'POST' && !id) {
+    const body = await readJsonBody(req);
+    if (albums.length >= 500) throw httpError(400, 'Đã có quá nhiều album');
+    const album = { id: crypto.randomBytes(6).toString('hex'), name: albumName(body.name), photoIds: [...new Set(ownPhotoIds(body.photoIds, photos))], cover: null, created: Date.now() };
+    albums.push(album);
+    await saveAlbums(uid, albums);
+    return send(res, 201, albumView(album, photos));
+  }
+
+  const album = albums.find(a => a.id === id);
+  if (!album) throw httpError(404, 'Không tìm thấy album');
+
+  // PATCH /api/albums/:id — { name?, add?: [...], remove?: [...], cover? }
+  if (req.method === 'PATCH') {
+    const body = await readJsonBody(req);
+    if (body.name !== undefined) album.name = albumName(body.name);
+    const add = ownPhotoIds(body.add, photos);
+    const remove = new Set(ownPhotoIds(body.remove, photos));
+    album.photoIds = [...new Set([...album.photoIds, ...add])].filter(x => !remove.has(x));
+    if (body.cover !== undefined) album.cover = album.photoIds.includes(body.cover) ? body.cover : null;
+    if (remove.has(album.cover)) album.cover = null;
+    await saveAlbums(uid, albums);
+    return send(res, 200, albumView(album, photos));
+  }
+
+  // DELETE /api/albums/:id — chỉ xoá album, ảnh vẫn còn
+  if (req.method === 'DELETE') {
+    await saveAlbums(uid, albums.filter(a => a.id !== id));
     return send(res, 200, { ok: true });
   }
 
@@ -466,6 +549,10 @@ const server = http.createServer(async (req, res) => {
       if (parts[1] === 'photos') {
         if (!session) throw httpError(401, 'Cần đăng nhập');
         return await photosApi(req, res, parts, session.user.id);
+      }
+      if (parts[1] === 'albums') {
+        if (!session) throw httpError(401, 'Cần đăng nhập');
+        return await albumsApi(req, res, parts, session.user.id);
       }
       return await authApi(req, res, parts, session);
     }

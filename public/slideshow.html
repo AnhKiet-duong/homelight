@@ -747,6 +747,11 @@ $('startBtn').onclick = start;
     if (res.status === 401) { location.href = '/login.html?next=' + encodeURIComponent(location.pathname + location.search); return; }
     if (!res.ok) throw new Error();
     all = await res.json();
+    // Trình chiếu một album: ?album=<id>
+    if (params.get('album')) {
+      const album = (await (await fetch('/api/albums')).json()).find(a => a.id === params.get('album'));
+      if (album) { const ids = new Set(album.photoIds); all = all.filter(p => ids.has(p.id)); }
+    }
   } catch {
     $('introText').innerHTML = 'Không kết nối được server.<br>Hãy chạy <b>node server.js</b> rồi tải lại trang.';
     return;
