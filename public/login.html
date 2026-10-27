@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07070a">
+<title>Đăng nhập · My Gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600&family=Oswald:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,400;1,500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07070a;
+    --surface: rgba(255,255,255,.04);
+    --surface-2: rgba(255,255,255,.08);
+    --line: rgba(255,255,255,.09);
+    --text: #f3f1ec;
+    --muted: rgba(243,241,236,.56);
+    --faint: rgba(243,241,236,.32);
+    --gold: #ffc27a;
+    --danger: #ff8a7a;
+    --ease: cubic-bezier(.2,.8,.2,1);
+    --display: "Oswald", "Arial Narrow", sans-serif;
+    --serif: "Playfair Display", Georgia, serif;
+    --sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; min-height: 100svh; display: grid; place-items: center;
+    padding: 24px 16px; overflow-x: hidden;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  svg { width: 18px; height: 18px; flex: none; }
+
+  .mesh { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+  .mesh i { position: absolute; width: 55vmax; height: 55vmax; border-radius: 50%; filter: blur(100px); opacity: .32; }
+  .mesh i:nth-child(1) { background: #ff8a5b; left: -20%; top: -25%; animation: drift 16s ease-in-out infinite alternate; }
+  .mesh i:nth-child(2) { background: #7b5cff; right: -25%; bottom: -30%; animation: drift 20s ease-in-out infinite alternate-reverse; }
+  @keyframes drift { to { transform: translate(8vmax, -6vmax) scale(1.15); } }
+
+  .card {
+    width: 100%; max-width: 400px; padding: 36px 32px 30px; border-radius: 24px;
+    background: rgba(12,12,16,.72); border: 1px solid var(--line);
+    backdrop-filter: blur(24px) saturate(1.3); -webkit-backdrop-filter: blur(24px) saturate(1.3);
+    box-shadow: 0 30px 90px -20px rgba(0,0,0,.7);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; }
+  .brand .mark {
+    width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--gold), #fff 140%); color: #111;
+    box-shadow: 0 6px 24px rgba(255,194,122,.45);
+  }
+  .brand b { font-family: var(--display); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; font-size: 15px; }
+  h1 { margin: 0 0 6px; font-family: var(--serif); font-style: italic; font-weight: 400; font-size: 30px; line-height: 1.15; }
+  .sub { margin: 0 0 24px; color: var(--muted); font-size: 14px; }
+
+  label { display: block; font-size: 12px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  .field { margin-bottom: 16px; }
+  input {
+    width: 100%; height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--text); font: inherit; outline: none;
+    transition: border-color .2s, background .2s;
+  }
+  input:focus { border-color: rgba(255,194,122,.6); background: var(--surface-2); }
+  .hint { font-size: 12px; color: var(--faint); margin-top: 6px; }
+
+  .btn {
+    width: 100%; height: 48px; margin-top: 8px; border-radius: 999px; border: 0;
+    background: var(--text); color: #0b0b0d; font-weight: 600; font-size: 15px;
+    transition: background .25s, box-shadow .25s, transform .25s var(--ease);
+  }
+  .btn:hover { background: #fff; box-shadow: 0 10px 40px rgba(255,194,122,.45); }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { opacity: .5; pointer-events: none; }
+  :is(.btn, input):focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+  .error { min-height: 20px; margin: 4px 0 0; font-size: 13px; color: var(--danger); }
+  .note { padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  .note b { color: var(--text); font-weight: 500; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="mesh" aria-hidden="true"><i></i><i></i></div>
+
+<main class="card">
+  <div class="brand">
+    <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg></span>
+    <b>My Gallery</b>
+  </div>
+
+  <h1 id="title">Chào mừng trở lại</h1>
+  <p class="sub" id="sub">Đăng nhập để xem bộ sưu tập của bạn.</p>
+
+  <form id="form" novalidate>
+    <div class="field">
+      <label for="username">Tên đăng nhập</label>
+      <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    </div>
+    <div class="field">
+      <label for="password">Mật khẩu</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <div class="hint" id="pwHint" hidden>Ít nhất 8 ký tự.</div>
+    </div>
+    <div class="field" id="confirmField" hidden>
+      <label for="confirm">Nhập lại mật khẩu</label>
+      <input id="confirm" name="confirm" type="password" autocomplete="new-password">
+    </div>
+    <button class="btn" id="submit" type="submit">Đăng nhập</button>
+    <p class="error" id="error" role="alert"></p>
+  </form>
+
+  <div class="note" id="remoteSetup" hidden>
+    Gallery chưa có tài khoản nào. Hãy mở <b>http://localhost:3000</b> ngay trên máy đang chạy server để tạo tài khoản quản trị đầu tiên.
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let mode = 'login'; // 'login' | 'setup'
+
+// Chỉ quay lại đường dẫn nội bộ, tránh bị chuyển sang trang lạ
+function nextUrl() {
+  const n = new URLSearchParams(location.search).get('next') || '/';
+  return n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/login.html') ? n : '/';
+}
+
+async function post(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Lỗi ${res.status}`);
+  return data;
+}
+
+function setupMode() {
+  mode = 'setup';
+  $('title').textContent = 'Tạo tài khoản quản trị';
+  $('sub').textContent = 'Đây là tài khoản đầu tiên, có quyền thêm tài khoản cho người khác. Ảnh đã có sẵn sẽ được chuyển vào tài khoản này.';
+  $('password').autocomplete = 'new-password';
+  $('pwHint').hidden = false;
+  $('confirmField').hidden = false;
+  $('submit').textContent = 'Tạo tài khoản';
+}
+
+$('form').onsubmit = async e => {
+  e.preventDefault();
+  $('error').textContent = '';
+  const username = $('username').value.trim().toLowerCase();
+  const password = $('password').value;
+  if (!username || !password) { $('error').textContent = 'Hãy nhập tên đăng nhập và mật khẩu.'; return; }
+  if (mode === 'setup' && password !== $('confirm').value) { $('error').textContent = 'Hai mật khẩu không khớp.'; return; }
+  $('submit').disabled = true;
+  try {
+    await post(mode === 'setup' ? '/api/setup' : '/api/login', { username, password });
+    location.replace(nextUrl());
+  } catch (err) {
+    $('error').textContent = err.message;
+    $('submit').disabled = false;
+  }
+};
+
+(async () => {
+  try {
+    const s = await (await fetch('/api/status')).json();
+    if (s.user) return location.replace(nextUrl());
+    if (s.canSetup) setupMode();
+    else if (s.needsSetup) { $('form').hidden = true; $('sub').hidden = true; $('title').textContent = 'Chưa có tài khoản'; $('remoteSetup').hidden = false; return; }
+  } catch {
+    $('error').textContent = 'Không kết nối được server.';
+  }
+  $('username').focus();
+})();
+</script>
+</body>
+</html>

@@ -744,6 +744,7 @@ $('startBtn').onclick = start;
   $('playBtn').innerHTML = ICON.play;
   try {
     const res = await fetch('/api/photos');
+    if (res.status === 401) { location.href = '/login.html?next=' + encodeURIComponent(location.pathname + location.search); return; }
     if (!res.ok) throw new Error();
     all = await res.json();
   } catch {
