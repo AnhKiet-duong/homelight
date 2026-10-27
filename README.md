@@ -20,6 +20,7 @@ Thiết bị khác cùng mạng Wi‑Fi mở bằng địa chỉ IP mà server i
 - Mỗi người dùng có mã (id) và thư mục ảnh riêng, chỉ thấy ảnh của mình
 - Quản trị viên thêm, xoá, đặt lại mật khẩu, cấp quyền cho người dùng
 - Ảnh chung: chọn nhiều ảnh rồi bấm **Công khai** để mọi tài khoản cùng xem và tải về (tab **Ảnh chung**); ảnh còn lại vẫn riêng tư. Ảnh công khai vẫn nằm trong thư mục của chủ ảnh, chuyển lại **Riêng tư** bất cứ lúc nào
+- Album: tạo album, chọn nhiều ảnh rồi **Thêm vào album**, chọn ảnh bìa, đổi tên, trình chiếu riêng từng album. Album chỉ lưu danh sách ảnh nên một ảnh có thể nằm trong nhiều album, và xoá album không làm mất ảnh
 - Tải ảnh bằng nút bấm, kéo thả hoặc dán (Ctrl+V); tự đọc ngày chụp từ EXIF
 - Lưới ảnh chia theo năm, nghiêng 3D khi rê chuột, màu ánh sáng lấy từ ảnh
 - Yêu thích, tìm kiếm, sắp xếp, xem phóng to, tải xuống, xoá
@@ -27,7 +28,7 @@ Thiết bị khác cùng mạng Wi‑Fi mở bằng địa chỉ IP mà server i
 
 ## Cấu trúc
 
-- `server.js` — server và API (`/api/photos`, `/api/public`, `/api/login`, `/api/users`, …)
+- `server.js` — server và API (`/api/photos`, `/api/albums`, `/api/public`, `/api/login`, `/api/users`, …)
 - `public/index.html` — trang gallery
 - `public/slideshow.html` — trang trình chiếu
 - `public/login.html`, `public/account.html` — đăng nhập, tài khoản và quản lý người dùng
@@ -36,6 +37,7 @@ Thiết bị khác cùng mạng Wi‑Fi mở bằng địa chỉ IP mà server i
   - `sessions.json` — phiên đăng nhập
   - `users/<id>/images/` — ảnh của từng người
   - `users/<id>/photos.json` — thông tin ảnh của từng người
+  - `users/<id>/albums.json` — album của từng người
 
 Sao lưu: chỉ cần copy cả thư mục `storage/`.
 

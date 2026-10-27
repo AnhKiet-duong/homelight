@@ -367,6 +367,56 @@
     body.selecting .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
   }
 
+  /* ---------- Album ---------- */
+  .albums { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 14px; margin: 0 -2px; scrollbar-width: thin; scroll-snap-type: x proximity; }
+  .albums[hidden] + .album-head { display: none; }
+  .alb {
+    flex: none; width: 168px; height: 112px; border-radius: 16px; position: relative; overflow: hidden; scroll-snap-align: start;
+    border: 1px solid var(--line); background: var(--surface) center / cover no-repeat; text-align: left; padding: 0;
+    transition: transform .3s var(--ease), box-shadow .3s, border-color .3s;
+  }
+  .alb:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.22); }
+  .alb.on { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold), 0 14px 40px -14px rgb(var(--amb) / .7); }
+  .alb::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 35%, rgba(0,0,0,.78)); }
+  .alb span { position: absolute; z-index: 1; left: 12px; right: 12px; bottom: 10px; }
+  .alb b { display: block; font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .alb small { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.62); }
+  .alb.all { background-image: linear-gradient(135deg, rgb(var(--amb) / .35), rgba(255,255,255,.04)); }
+  .alb.new { border-style: dashed; background: transparent; display: grid; place-items: center; color: var(--muted); }
+  .alb.new::after { display: none; }
+  .alb.new span { position: static; text-align: center; }
+  .alb.new svg { width: 22px; height: 22px; display: block; margin: 0 auto 6px; }
+  .alb:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+  .album-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin: 18px 0 0; }
+  .album-head h2 { margin: 0; font-family: var(--serif); font-style: italic; font-weight: 400; font-size: clamp(28px, 4vw, 42px); line-height: 1.1; word-break: break-word; }
+  .album-head .count { font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: var(--faint); padding-bottom: 8px; margin-right: auto; }
+  .album-head .btn { height: 36px; font-size: 13px; padding: 0 14px; }
+
+  /* ---------- Hộp thoại ---------- */
+  .dlg {
+    width: min(420px, calc(100vw - 32px)); padding: 26px; border-radius: 22px; border: 1px solid var(--line);
+    background: #121216; color: var(--text); box-shadow: 0 30px 90px rgba(0,0,0,.7);
+  }
+  .dlg::backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .dlg h3 { margin: 0 0 16px; font-family: var(--serif); font-style: italic; font-weight: 400; font-size: 24px; }
+  .dlg input {
+    width: 100%; height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line);
+    background: rgba(255,255,255,.05); color: var(--text); font: inherit; outline: none;
+  }
+  .dlg input:focus { border-color: rgba(255,194,122,.6); }
+  .dlg .pick { display: grid; gap: 6px; max-height: 260px; overflow-y: auto; margin-bottom: 14px; }
+  .dlg .pick button {
+    display: flex; align-items: center; gap: 12px; padding: 6px; border-radius: 12px; border: 1px solid transparent;
+    background: rgba(255,255,255,.04); text-align: left;
+  }
+  .dlg .pick button:hover, .dlg .pick button:focus-visible { border-color: rgba(255,194,122,.5); outline: none; }
+  .dlg .pick i { width: 46px; height: 34px; border-radius: 8px; background: rgba(255,255,255,.08) center / cover; flex: none; }
+  .dlg .pick b { font-weight: 500; font-size: 14px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dlg .pick small { color: var(--faint); font-size: 12px; }
+  .dlg .or { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin: 4px 0 8px; }
+  .dlg .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .dlg .err { min-height: 18px; margin: 8px 0 0; font-size: 13px; color: #ff8a7a; }
+
   /* ---------- Lightbox ---------- */
   .lb {
     position: fixed; inset: 0; z-index: 120; display: flex; flex-direction: column;
@@ -514,6 +564,13 @@
 </div>
 
 <main>
+  <nav class="albums" id="albums" aria-label="Album"></nav>
+  <div class="album-head" id="albumHead" hidden>
+    <h2 id="albumName"></h2>
+    <span class="count" id="albumCount"></span>
+    <button class="btn" id="albumRename">Đổi tên</button>
+    <button class="btn" id="albumDelete">Xoá album</button>
+  </div>
   <div id="sections"></div>
   <section class="empty" id="empty" hidden>
     <div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div>
@@ -531,9 +588,14 @@
   <button class="btn" id="selAll">Chọn tất cả</button>
   <button class="btn light" id="selPublic">Công khai</button>
   <button class="btn" id="selPrivate">Riêng tư</button>
+  <button class="btn" id="selAlbum">Thêm vào album</button>
+  <button class="btn" id="selUnalbum">Bỏ khỏi album</button>
+  <button class="btn" id="selCover">Làm ảnh bìa</button>
   <button class="btn" id="selDownload">Tải về</button>
   <button class="btn" id="selDone">Xong</button>
 </div>
+
+<dialog class="dlg" id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
 
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Xem ảnh">
   <div class="lb-bg"><i></i><i></i></div>
@@ -578,6 +640,8 @@ async function getJson(url) {
 // ---------- State ----------
 let photos = [];          // {id, name, url, size, type, added, taken, fav, public, w, h}
 let shared = [];          // ảnh công khai của mọi người: như trên + owner, mine
+let albums = [];          // {id, name, photoIds, cover, coverUrl, created} — album của mình
+let albumId = null;       // đang xem album nào (null: tất cả ảnh)
 let selecting = false;    // đang ở chế độ chọn nhiều ảnh
 const selected = new Set();
 let view = [];            // danh sách đang hiển thị (sau lọc/sắp xếp)
@@ -594,6 +658,8 @@ const cleanName = n => n.replace(/\.[^.]+$/, '');
 const globeSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>';
 const checkSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>';
 const isShared = () => mode === 'shared';
+const curAlbum = () => isShared() ? null : albums.find(a => a.id === albumId) || null;
+const esc = t => String(t).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const starSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></svg>';
 
 function toast(msg) {
@@ -689,14 +755,23 @@ function updateStats() {
   } else $('stYears').textContent = '—';
   document.querySelectorAll('.slide-link').forEach(l => {
     l.setAttribute('aria-disabled', photos.length ? 'false' : 'true');
-    l.href = 'slideshow.html' + (mode === 'fav' ? '?fav=1' : '');
+    l.href = 'slideshow.html' + slideQuery();
   });
+}
+
+function slideQuery(start) {
+  const q = new URLSearchParams();
+  if (start) q.set('start', start);
+  if (mode === 'fav') q.set('fav', '1');
+  if (curAlbum()) q.set('album', albumId);
+  return q.size ? '?' + q : '';
 }
 
 // ---------- Lưới ảnh ----------
 function computeView() {
   const q = $('q').value.trim().toLowerCase();
-  let list = (isShared() ? shared : photos).filter(p => p.name.toLowerCase().includes(q) || (p.owner || '').includes(q));
+  const album = curAlbum(), inAlbum = album && new Set(album.photoIds);
+  let list = (isShared() ? shared : photos).filter(p => !inAlbum || inAlbum.has(p.id)).filter(p => p.name.toLowerCase().includes(q) || (p.owner || '').includes(q));
   if (mode === 'fav') list = list.filter(p => p.fav);
   list.sort((a, b) =>
     mode === 'old' ? when(a) - when(b) :
@@ -767,11 +842,14 @@ function render() {
   view = computeView();
   updateStats(); updateHero();
   const box = $('sections'); box.innerHTML = '';
-  const none = (isShared() ? shared : photos).length === 0;
+  renderAlbums();
+  const album = curAlbum();
+  const none = (isShared() ? shared : album ? album.photoIds : photos).length === 0;
   $('empty').hidden = view.length > 0;
-  $('emptyTitle').textContent = !none ? 'Không tìm thấy ảnh' : isShared() ? 'Chưa có ảnh chung' : 'Chưa có khoảnh khắc nào';
+  $('emptyTitle').textContent = !none ? 'Không tìm thấy ảnh' : isShared() ? 'Chưa có ảnh chung' : album ? 'Album chưa có ảnh' : 'Chưa có khoảnh khắc nào';
   $('emptyText').textContent = !none ? 'Thử từ khoá khác hoặc bỏ bộ lọc.' : isShared()
     ? 'Bấm "Chọn", chọn ảnh của bạn rồi bấm "Công khai" để mọi tài khoản cùng xem và tải về.'
+    : album ? 'Tải ảnh lên ngay tại đây, hoặc về "Tất cả ảnh", bấm "Chọn" rồi "Thêm vào album".'
     : 'Kéo thả ảnh vào đây, dán bằng Ctrl+V, hoặc chọn từ máy.';
   $('emptyUpload').hidden = !none || isShared();
 
@@ -894,6 +972,12 @@ async function addFiles(files) {
   $('uplCount').textContent = `${ok} ảnh mới`;
   setTimeout(() => upl.classList.remove('show'), 1800);
   uploading = false;
+  // Đang xem một album thì ảnh vừa tải lên được thêm luôn vào album đó
+  const album = curAlbum(), added = photos.slice(-ok).map(p => p.id);
+  if (album && ok) {
+    try { upsertAlbum(await albumApi('PATCH', '/' + album.id, { add: added })); }
+    catch (e) { toast('Ảnh đã lưu nhưng chưa thêm được vào album'); }
+  }
   render();
   if (ok && scrollY < innerHeight * .5) $('gallery').scrollIntoView({ behavior: 'smooth' });
 }
@@ -952,8 +1036,10 @@ function toggleSel(p, card) {
 function updateSelbar() {
   $('selbar').classList.toggle('show', selecting);
   $('selCount').textContent = `Đã chọn ${selected.size} ảnh`;
-  $('selPublic').hidden = $('selPrivate').hidden = isShared();
-  for (const id of ['selPublic', 'selPrivate', 'selDownload']) $(id).disabled = !selected.size;
+  $('selPublic').hidden = $('selPrivate').hidden = $('selAlbum').hidden = isShared();
+  $('selUnalbum').hidden = !curAlbum();
+  $('selCover').hidden = !curAlbum() || selected.size !== 1;
+  for (const id of ['selPublic', 'selPrivate', 'selAlbum', 'selUnalbum', 'selDownload']) $(id).disabled = !selected.size;
   $('selAll').textContent = view.length && view.every(p => selected.has(p.id)) ? 'Bỏ chọn hết' : 'Chọn tất cả';
 }
 const selectedPhotos = () => view.filter(p => selected.has(p.id));
@@ -988,6 +1074,145 @@ $('selPrivate').onclick = () => setPublicMany(false);
 $('selDownload').onclick = () => { downloadMany(selectedPhotos()); setSelecting(false); };
 addEventListener('keydown', e => { if (e.key === 'Escape' && selecting && !lb.classList.contains('open')) setSelecting(false); });
 
+// ---------- Album ----------
+const albumApi = async (method, path = '', body) => {
+  const res = await fetch('/api/albums' + path, { method, headers: body ? jsonHeaders : {}, body: body && JSON.stringify(body) });
+  if (res.status === 401) { location.href = '/login.html?next=/'; throw new Error('Cần đăng nhập'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Lỗi ${res.status}`);
+  return data;
+};
+function upsertAlbum(a) {
+  const i = albums.findIndex(x => x.id === a.id);
+  if (i < 0) albums.push(a); else albums[i] = a;
+}
+async function loadAlbums() {
+  try { albums = await albumApi('GET'); } catch (e) { console.error(e); }
+  if (albumId && !albums.some(a => a.id === albumId)) albumId = null;
+}
+
+function renderAlbums() {
+  const box = $('albums');
+  box.hidden = isShared();
+  $('albumHead').hidden = !curAlbum();
+  if (isShared()) return;
+  const tile = (cls, label, sub, bg) => `<button class="alb ${cls}" ${bg ? `style="background-image:url('${esc(bg)}')"` : ''}><span><b>${esc(label)}</b><small>${esc(sub)}</small></span></button>`;
+  box.innerHTML = tile('all' + (albumId ? '' : ' on'), 'Tất cả ảnh', photos.length + ' ảnh')
+    + albums.map(a => tile(a.id === albumId ? 'on' : '', a.name, a.photoIds.length + ' ảnh', a.coverUrl)).join('')
+    + `<button class="alb new"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Album mới</span></button>`;
+  const tiles = [...box.children];
+  tiles[0].onclick = () => openAlbum(null);
+  albums.forEach((a, i) => { tiles[i + 1].onclick = () => openAlbum(a.id); });
+  tiles.at(-1).onclick = createAlbum;
+  const album = curAlbum();
+  if (album) {
+    $('albumName').textContent = album.name;
+    $('albumCount').textContent = album.photoIds.length + ' ảnh';
+  }
+}
+function openAlbum(id) {
+  if (id === albumId) return;
+  albumId = id; selected.clear();
+  render();
+  $('albums').querySelector('.alb.on')?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+}
+
+// Hộp thoại nhỏ (dùng <dialog>), trả về giá trị khi đóng
+function dialog(build) {
+  const dlg = $('dlg'), form = $('dlgForm');
+  return new Promise(resolve => {
+    let result = null;
+    form.innerHTML = '';
+    build(form, v => { result = v; dlg.close(); });
+    dlg.onclose = () => resolve(result);
+    dlg.showModal();
+    form.querySelector('input, .pick button')?.focus();
+  });
+}
+function askName(title, value = '') {
+  return dialog((form, done) => {
+    form.innerHTML = `<h3></h3><input name="name" maxlength="80" placeholder="Tên album" autocomplete="off">
+      <div class="acts"><button class="btn" value="">Huỷ</button><button class="btn light" id="dlgOk">Lưu</button></div>`;
+    form.querySelector('h3').textContent = title;
+    const input = form.querySelector('input'); input.value = value;
+    form.querySelector('#dlgOk').onclick = e => { e.preventDefault(); if (input.value.trim()) done(input.value.trim()); else input.focus(); };
+  });
+}
+function pickAlbum(count) {
+  return dialog((form, done) => {
+    form.innerHTML = `<h3>Thêm ${count} ảnh vào album</h3><div class="pick"></div><div class="or">hoặc tạo album mới</div>
+      <input name="name" maxlength="80" placeholder="Tên album mới" autocomplete="off">
+      <div class="acts"><button class="btn" value="">Huỷ</button><button class="btn light" id="dlgOk">Tạo và thêm</button></div>`;
+    const pick = form.querySelector('.pick');
+    if (!albums.length) { pick.remove(); form.querySelector('.or').remove(); }
+    for (const a of albums) {
+      const b = document.createElement('button'); b.type = 'button';
+      b.innerHTML = `<i></i><b></b><small>${a.photoIds.length} ảnh</small>`;
+      if (a.coverUrl) b.querySelector('i').style.backgroundImage = `url("${a.coverUrl}")`;
+      b.querySelector('b').textContent = a.name;
+      b.onclick = () => done({ id: a.id });
+      pick.appendChild(b);
+    }
+    const input = form.querySelector('input');
+    form.querySelector('#dlgOk').onclick = e => { e.preventDefault(); if (input.value.trim()) done({ name: input.value.trim() }); else input.focus(); };
+  });
+}
+
+async function createAlbum() {
+  const name = await askName('Album mới');
+  if (!name) return;
+  try {
+    const a = await albumApi('POST', '', { name });
+    albums.push(a);
+    openAlbum(a.id);
+    toast(`Đã tạo album "${a.name}", tải ảnh lên hoặc thêm ảnh có sẵn vào nhé`);
+  } catch (e) { toast('Không tạo được album: ' + e.message); }
+}
+async function addToAlbum() {
+  const ids = selectedPhotos().map(p => p.id);
+  const choice = await pickAlbum(ids.length);
+  if (!choice) return;
+  try {
+    const a = choice.id ? await albumApi('PATCH', '/' + choice.id, { add: ids }) : await albumApi('POST', '', { name: choice.name, photoIds: ids });
+    upsertAlbum(a);
+    setSelecting(false); render();
+    toast(`Đã thêm ${ids.length} ảnh vào "${a.name}"`);
+  } catch (e) { toast('Không thêm được: ' + e.message); }
+}
+async function removeFromAlbum() {
+  const ids = selectedPhotos().map(p => p.id);
+  try { upsertAlbum(await albumApi('PATCH', '/' + albumId, { remove: ids })); }
+  catch (e) { toast('Không cập nhật được: ' + e.message); return; }
+  setSelecting(false); render();
+  toast(`Đã bỏ ${ids.length} ảnh khỏi album (ảnh vẫn còn trong Tất cả ảnh)`);
+}
+async function setCover() {
+  const [p] = selectedPhotos();
+  try { upsertAlbum(await albumApi('PATCH', '/' + albumId, { cover: p.id })); }
+  catch (e) { toast('Không cập nhật được: ' + e.message); return; }
+  setSelecting(false); render();
+  toast('Đã đổi ảnh bìa');
+}
+
+$('selAlbum').onclick = addToAlbum;
+$('selUnalbum').onclick = removeFromAlbum;
+$('selCover').onclick = setCover;
+$('albumRename').onclick = async () => {
+  const album = curAlbum(); if (!album) return;
+  const name = await askName('Đổi tên album', album.name);
+  if (!name || name === album.name) return;
+  try { upsertAlbum(await albumApi('PATCH', '/' + album.id, { name })); render(); }
+  catch (e) { toast('Không đổi tên được: ' + e.message); }
+};
+$('albumDelete').onclick = async () => {
+  const album = curAlbum(); if (!album) return;
+  if (!confirm(`Xoá album "${album.name}"? Ảnh trong album vẫn được giữ lại.`)) return;
+  try { await albumApi('DELETE', '/' + album.id); }
+  catch (e) { toast('Không xoá được: ' + e.message); return; }
+  albums = albums.filter(a => a.id !== album.id); albumId = null;
+  render(); toast('Đã xoá album');
+};
+
 async function toggleFav(p) {
   if (isShared()) return;
   try {
@@ -1008,6 +1233,7 @@ async function removePhoto(p) {
   try { await api('DELETE', '/' + p.id); }
   catch (e) { toast('Không xoá được: ' + e.message); return; }
   photos = photos.filter(x => x.id !== p.id);
+  if (albums.some(a => a.photoIds.includes(p.id))) await loadAlbums();
   render();
   if ($('lb').classList.contains('open')) {
     if (!view.length) closeLB();
@@ -1098,7 +1324,7 @@ $('lbFav').onclick = () => toggleFav(view[current]);
 $('lbPublic').onclick = () => togglePublic(view[current]);
 $('lbDelete').onclick = () => removePhoto(view[current]);
 $('lbDownload').onclick = () => { const p = view[current], a = document.createElement('a'); a.href = p.url; a.download = p.name; a.click(); };
-$('lbSlide').onclick = () => { location.href = 'slideshow.html?start=' + encodeURIComponent(view[current].id) + (mode === 'fav' ? '&fav=1' : ''); };
+$('lbSlide').onclick = () => { location.href = 'slideshow.html' + slideQuery(view[current].id); };
 $('lbStage').addEventListener('click', e => { if (e.target === e.currentTarget) closeLB(); });
 addEventListener('keydown', e => {
   if (!lb.classList.contains('open')) return;
@@ -1142,6 +1368,7 @@ async function loadShared() {
 async function load() {
   try {
     photos = await api('GET', '');
+    await loadAlbums();
     if (isShared()) await loadShared();
   }
   catch (e) { console.error(e); toast('Không kết nối được server'); return; }
