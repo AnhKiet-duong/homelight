@@ -359,6 +359,23 @@ async function authApi(req, res, parts, session) {
   throw httpError(404, 'Not found');
 }
 
+// ---------- API: ảnh chung (ảnh mọi người đã chọn công khai) ----------
+// Ảnh công khai vẫn nằm trong thư mục của chủ ảnh, chỉ được xem qua /shared/<id chủ ảnh>/<file>
+function publicPhotos(viewerId) {
+  const list = [];
+  for (const u of users) {
+    for (const p of getPhotos(u.id)) {
+      if (p.public) list.push({ ...p, fav: false, url: `/shared/${u.id}/${p.file}`, owner: u.username, mine: u.id === viewerId });
+    }
+  }
+  return list;
+}
+function findPublicFile(ownerId, file) {
+  if (!users.some(u => u.id === ownerId)) return null;
+  const photo = getPhotos(ownerId).find(p => p.public && p.file === file);
+  return photo ? path.join(imagesDir(ownerId), photo.file) : null;
+}
+
 // ---------- API: ảnh (của người đang đăng nhập) ----------
 async function photosApi(req, res, parts, uid) {
   if (parts.length > 3) throw httpError(404, 'Not found');
@@ -367,6 +384,17 @@ async function photosApi(req, res, parts, uid) {
 
   // GET /api/photos — danh sách ảnh
   if (req.method === 'GET' && !id) return send(res, 200, photos);
+
+  // POST /api/photos/bulk — công khai / riêng tư nhiều ảnh cùng lúc: { ids: [...], public: true|false }
+  if (req.method === 'POST' && id === 'bulk') {
+    const body = await readJsonBody(req);
+    if (!Array.isArray(body.ids) || typeof body.public !== 'boolean') throw httpError(400, 'Cần danh sách ảnh và trạng thái công khai');
+    const ids = new Set(body.ids);
+    let updated = 0;
+    for (const p of photos) if (ids.has(p.id) && !!p.public !== body.public) { p.public = body.public; updated++; }
+    if (updated) await savePhotos(uid, photos);
+    return send(res, 200, { updated });
+  }
 
   // POST /api/photos — body là nội dung file ảnh, tên file ở header X-Filename
   if (req.method === 'POST' && !id) {
@@ -392,6 +420,7 @@ async function photosApi(req, res, parts, uid) {
       taken: Number(req.headers['x-taken']) || null, // ngày chụp đọc từ EXIF (nếu có)
       added: Date.now(),
       fav: false,
+      public: false, // true: mọi tài khoản đều xem và tải được
     };
     photos.push(photo);
     await savePhotos(uid, photos);
@@ -405,6 +434,7 @@ async function photosApi(req, res, parts, uid) {
   if (req.method === 'PATCH') {
     const body = await readJsonBody(req);
     if (typeof body.fav === 'boolean') photo.fav = body.fav;
+    if (typeof body.public === 'boolean') photo.public = body.public;
     if (typeof body.name === 'string' && body.name.trim()) photo.name = body.name.trim().slice(0, 200);
     await savePhotos(uid, photos);
     return send(res, 200, photo);
@@ -428,6 +458,11 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname.startsWith('/api/')) {
       const parts = url.pathname.split('/').filter(Boolean); // ['api', 'photos', id?]
+      // GET /api/public — ảnh công khai của mọi người
+      if (parts[1] === 'public' && parts.length === 2 && req.method === 'GET') {
+        if (!session) throw httpError(401, 'Cần đăng nhập');
+        return send(res, 200, publicPhotos(session.user.id));
+      }
       if (parts[1] === 'photos') {
         if (!session) throw httpError(401, 'Cần đăng nhập');
         return await photosApi(req, res, parts, session.user.id);
@@ -449,6 +484,15 @@ const server = http.createServer(async (req, res) => {
       const file = safeJoin(imagesDir(session.user.id), url.pathname.slice('/uploads/'.length));
       // Tên file là UUID nên nội dung không bao giờ đổi -> cache lâu (private: không cho proxy lưu)
       return file ? serveFile(res, file, 'private, max-age=31536000, immutable') : send(res, 400, 'Bad path');
+    }
+
+    if (url.pathname.startsWith('/shared/')) {
+      // /shared/<id chủ ảnh>/<file>: chỉ trả về khi ảnh đang được công khai
+      const [ownerId, name, ...rest] = url.pathname.slice('/shared/'.length).split('/');
+      let file = null;
+      try { if (!rest.length && name) file = findPublicFile(ownerId, decodeURIComponent(name)); } catch { /* đường dẫn lỗi */ }
+      // Cache ngắn vì chủ ảnh có thể chuyển lại thành riêng tư
+      return file ? serveFile(res, file, 'private, max-age=300') : send(res, 404, 'Không tìm thấy');
     }
 
     const file = safeJoin(PUBLIC_DIR, page);

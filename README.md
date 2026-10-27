@@ -19,6 +19,7 @@ Thiết bị khác cùng mạng Wi‑Fi mở bằng địa chỉ IP mà server i
 - Đăng nhập bằng mật khẩu (mã hoá scrypt), giữ đăng nhập 30 ngày, khoá tạm khi nhập sai nhiều lần
 - Mỗi người dùng có mã (id) và thư mục ảnh riêng, chỉ thấy ảnh của mình
 - Quản trị viên thêm, xoá, đặt lại mật khẩu, cấp quyền cho người dùng
+- Ảnh chung: chọn nhiều ảnh rồi bấm **Công khai** để mọi tài khoản cùng xem và tải về (tab **Ảnh chung**); ảnh còn lại vẫn riêng tư. Ảnh công khai vẫn nằm trong thư mục của chủ ảnh, chuyển lại **Riêng tư** bất cứ lúc nào
 - Tải ảnh bằng nút bấm, kéo thả hoặc dán (Ctrl+V); tự đọc ngày chụp từ EXIF
 - Lưới ảnh chia theo năm, nghiêng 3D khi rê chuột, màu ánh sáng lấy từ ảnh
 - Yêu thích, tìm kiếm, sắp xếp, xem phóng to, tải xuống, xoá
@@ -26,7 +27,7 @@ Thiết bị khác cùng mạng Wi‑Fi mở bằng địa chỉ IP mà server i
 
 ## Cấu trúc
 
-- `server.js` — server và API (`/api/photos`, `/api/login`, `/api/users`, …)
+- `server.js` — server và API (`/api/photos`, `/api/public`, `/api/login`, `/api/users`, …)
 - `public/index.html` — trang gallery
 - `public/slideshow.html` — trang trình chiếu
 - `public/login.html`, `public/account.html` — đăng nhập, tài khoản và quản lý người dùng
