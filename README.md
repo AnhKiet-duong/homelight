@@ -23,6 +23,7 @@ Thiết bị khác cùng mạng Wi‑Fi mở bằng địa chỉ IP mà server i
 - Album: tạo album, chọn nhiều ảnh rồi **Thêm vào album**, chọn ảnh bìa, đổi tên, trình chiếu riêng từng album. Album chỉ lưu danh sách ảnh nên một ảnh có thể nằm trong nhiều album, và xoá album không làm mất ảnh
 - Tải ảnh bằng nút bấm, kéo thả hoặc dán (Ctrl+V); tự đọc ngày chụp từ EXIF
 - Lưới ảnh chia theo năm, nghiêng 3D khi rê chuột, màu ánh sáng lấy từ ảnh
+- Hai giao diện, đổi bằng nút **Giao diện** trên thanh trên cùng: **Điện ảnh** (nền tối, nghiêng 3D) và **Album giấy** (nền giấy sáng, khung ảnh trắng, chữ kiểu tạp chí). Lựa chọn được nhớ trong trình duyệt
 - Yêu thích, tìm kiếm, sắp xếp, xem phóng to, tải xuống, xoá
 - Trình chiếu (`/slideshow.html`): băng chuyền 3D, Ken Burns, nhạc nền, toàn màn hình, phím tắt
 
