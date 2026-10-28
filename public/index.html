@@ -248,7 +248,7 @@
     --sc: 1.025; transition: transform .15s linear, box-shadow .5s;
     box-shadow: 0 30px 70px -22px rgb(var(--c) / .55), 0 0 0 1px rgb(var(--c) / .25);
   }
-  .tilt img { display: block; width: 100%; height: auto; transition: transform 1.2s var(--ease), filter .6s; }
+  .tilt img { display: block; width: 100%; height: auto; transition: transform 1.2s var(--ease), filter .6s; background: var(--ph, none); } /* --ph: màu của ảnh, hiện trong lúc ảnh đang tải */
   .card.hover .tilt img { transform: scale(1.06); }
   .glare {
     position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s;
@@ -450,6 +450,8 @@
     max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; user-select: none;
     box-shadow: 0 40px 120px -30px rgb(var(--amb) / .45), 0 30px 80px rgba(0,0,0,.6);
   }
+  .lb-stage img.lo { filter: blur(3px); } /* đang hiện ảnh nhỏ, chờ ảnh nét */
+  .lb-btn.hd { width: auto; padding: 0 12px; border-radius: 21px; font: 600 12px/1 var(--sans, sans-serif); letter-spacing: .08em; }
   .lb-nav { position: absolute; top: 50%; margin-top: -26px; width: 52px; height: 52px; }
   .lb-nav.prev { left: 20px; } .lb-nav.next { right: 20px; }
   .strip {
@@ -642,7 +644,8 @@
     transform: none; overflow: visible; border-radius: 0; background: none; box-shadow: none;
   }
   html[data-theme="paper"] .tilt img {
-    width: 100%; height: auto; aspect-ratio: var(--ar, 1.5); object-fit: cover; padding: 8px; background: var(--card);
+    width: 100%; height: auto; aspect-ratio: var(--ar, 1.5); object-fit: cover; padding: 8px;
+    background: linear-gradient(var(--ph, var(--card)), var(--ph, var(--card))) content-box, var(--card);
     box-shadow: 0 1px 0 var(--line), 0 14px 30px -22px rgba(60,40,20,.5); transition: transform .4s var(--ease), box-shadow .4s;
   }
   html[data-theme="paper"] .card.hover .tilt img { transform: translateY(-3px) rotate(-.4deg); box-shadow: 0 1px 0 var(--line), 0 26px 40px -24px rgba(60,40,20,.6); }
@@ -713,6 +716,7 @@
   html[data-theme="paper"] .lb-btn.on { background: var(--text); border-color: var(--text); color: var(--bg); }
   html[data-theme="paper"] #lbFav { order: 2; } html[data-theme="paper"] #lbPublic { order: 3; }
   html[data-theme="paper"] #lbDownload { order: 4; } html[data-theme="paper"] #lbSlide { order: 5; }
+  html[data-theme="paper"] #lbFull { order: 5; grid-column: 1 / -1; } html[data-theme="paper"] #lbFull .hd-t { display: none; }
   html[data-theme="paper"] #lbDelete { order: 6; grid-column: 1 / -1; color: #a33; }
   html[data-theme="paper"] #lbClose { order: 0; grid-column: 1 / -1; justify-self: end; width: 40px; padding: 0; }
   html[data-theme="paper"] .lb-nav { width: 48px; background: var(--card); }
@@ -756,6 +760,7 @@
     html[data-theme="paper"] .lb-title :is(.k, .fn), html[data-theme="paper"] .meta { display: none !important; }
     html[data-theme="paper"] .lb-btn { width: 38px; height: 38px; padding: 0; }
     html[data-theme="paper"] .lb-btn .t { display: none; }
+    html[data-theme="paper"] #lbFull .hd-t { display: inline; font-size: 10px; }
     html[data-theme="paper"] #lbClose { order: 7; }
     html[data-theme="paper"] .lb-stage { padding: 8px 8px 12px; }
     html[data-theme="paper"] .lb-stage img { padding: 6px; }
@@ -916,6 +921,7 @@
     <button class="lb-btn" id="lbSlide" title="Trình chiếu từ ảnh này"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg><span class="t">Trình chiếu</span></button>
     <button class="lb-btn" id="lbPublic" title="Công khai cho mọi tài khoản (P)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><span class="t">Công khai</span></button>
     <button class="lb-btn" id="lbFav" title="Yêu thích (F)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></svg><span class="t">Yêu thích</span></button>
+    <button class="lb-btn hd" id="lbFull" title="Xem ảnh gốc (chất lượng đầy đủ, nặng hơn)"><b class="hd-t">GỐC</b><span class="t">Ảnh gốc</span></button>
     <button class="lb-btn" id="lbDownload" title="Tải xuống"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg><span class="t">Tải xuống</span></button>
     <button class="lb-btn" id="lbDelete" title="Xoá (Delete)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span class="t">Xoá ảnh</span></button>
     <button class="lb-btn" id="lbClose" title="Đóng (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
@@ -950,7 +956,8 @@ async function getJson(url) {
 }
 
 // ---------- State ----------
-let photos = [];          // {id, name, url, size, type, added, taken, fav, public, w, h}
+let photos = [];          // {id, name, url, thumb, preview, color, size, type, added, taken, fav, public, w, h}
+// url: ảnh gốc; thumb: ảnh nhỏ cho lưới; preview: ảnh vừa màn hình để xem phóng to (server tạo, xem media.js)
 let shared = [];          // ảnh công khai của mọi người: như trên + owner, mine
 let albums = [];          // {id, name, photoIds, cover, coverUrl, created} — album của mình
 let albumId = null;       // đang xem album nào (null: tất cả ảnh)
@@ -1031,10 +1038,11 @@ function updateHero() {
 async function showHero(i) {
   heroIdx = i % heroList.length;
   const p = heroList[heroIdx];
-  const img = new Image(); img.src = p.url;
+  const src = p.preview || p.url;
+  const img = new Image(); img.src = src;
   try { await img.decode(); } catch {}
   const back = heroLayers[1 - heroFront];
-  back.style.backgroundImage = `url("${p.url}")`;
+  back.style.backgroundImage = `url("${src}")`;
   back.classList.remove('kb', 'alt'); void back.offsetWidth;
   back.classList.add('kb'); if (heroIdx % 2) back.classList.add('alt');
   back.classList.add('on'); heroLayers[heroFront].classList.remove('on');
@@ -1125,6 +1133,7 @@ function makeCard(p, i) {
   const card = document.createElement('figure');
   card.className = 'card'; card.tabIndex = 0; card.dataset.id = p.id;
   if (p.w && p.h) card.style.setProperty('--ar', (p.w / p.h).toFixed(4));
+  if (p.color && !colors.has(p.id)) colors.set(p.id, p.color);
   if (colors.get(p.id)) card.style.setProperty('--c', colors.get(p.id));
   card.innerHTML = `
     <div class="tilt">
@@ -1137,7 +1146,8 @@ function makeCard(p, i) {
     </div>`;
   if (selected.has(p.id)) card.classList.add('sel');
   const img = card.querySelector('img');
-  img.src = p.url; img.alt = p.name;
+  if (p.color) card.style.setProperty('--ph', `rgb(${p.color})`);
+  img.src = p.thumb || p.url; img.alt = p.name;
   img.addEventListener('load', () => {
     if (!colors.has(p.id)) colors.set(p.id, dominant(img));
     if (colors.get(p.id)) card.style.setProperty('--c', colors.get(p.id));
@@ -1431,8 +1441,8 @@ function renderAlbums() {
   if (isShared()) return;
   const tile = (cls, label, sub, bg, style = '') => `<button class="alb ${cls}" style="${bg ? `background-image:url('${esc(bg)}');` : ''}${style}"><span><b>${esc(label)}</b><small>${esc(sub)}</small></span></button>`;
   const newest = photos.reduce((a, p) => !a || when(p) > when(a) ? p : a, null);
-  box.innerHTML = tile('all' + (albumId ? '' : ' on'), 'Tất cả ảnh', photos.length + ' ảnh', null, newest ? `--cover:url('${esc(newest.url)}')` : '')
-    + albums.map(a => tile(a.id === albumId ? 'on' : '', a.name, a.photoIds.length + ' ảnh', a.coverUrl)).join('')
+  box.innerHTML = tile('all' + (albumId ? '' : ' on'), 'Tất cả ảnh', photos.length + ' ảnh', null, newest ? `--cover:url('${esc(newest.thumb || newest.url)}')` : '')
+    + albums.map(a => tile(a.id === albumId ? 'on' : '', a.name, a.photoIds.length + ' ảnh', a.coverThumb || a.coverUrl)).join('')
     + `<button class="alb new"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Album mới</span></button>`;
   const tiles = [...box.children];
   tiles[0].onclick = () => openAlbum(null);
@@ -1482,7 +1492,7 @@ function pickAlbum(count) {
     for (const a of albums) {
       const b = document.createElement('button'); b.type = 'button';
       b.innerHTML = `<i></i><b></b><small>${a.photoIds.length} ảnh</small>`;
-      if (a.coverUrl) b.querySelector('i').style.backgroundImage = `url("${a.coverUrl}")`;
+      if (a.coverUrl) b.querySelector('i').style.backgroundImage = `url("${a.coverThumb || a.coverUrl}")`;
       b.querySelector('b').textContent = a.name;
       b.onclick = () => done({ id: a.id });
       pick.appendChild(b);
@@ -1608,18 +1618,42 @@ function closeLB() {
   }
   done();
 }
+// Hiện ngay ảnh nhỏ (đã có sẵn từ lưới), phóng đúng khung, rồi thay bằng ảnh nét khi tải xong
+function fitLB(p, cap) {
+  if (!p.w || !p.h) { lbImg.style.width = lbImg.style.height = ''; return; }
+  const st = $('lbStage'), cs = getComputedStyle(st);
+  const bw = st.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const bh = st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const k = Math.min(bw / p.w, bh / p.h, cap / Math.max(p.w, p.h), 1);
+  lbImg.style.width = Math.round(p.w * k) + 'px'; lbImg.style.height = Math.round(p.h * k) + 'px';
+}
+let lbFull = false; // đang xem ảnh gốc
+function loadSharp(p, src) {
+  const img = new Image(); img.src = src;
+  img.decode().catch(() => {}).then(() => {
+    if (view[current] !== p || !img.naturalWidth) return;
+    lbImg.src = src; lbImg.classList.remove('lo');
+    if (src === p.url) { lbImg.style.width = lbImg.style.height = ''; $('lbFull').classList.add('on'); }
+  });
+}
 async function setLB(dir, first) {
   const p = view[current]; if (!p) return;
-  lbImg.src = p.url; lbImg.alt = p.name;
+  const small = p.thumb || p.url, big = p.preview || p.url;
+  lbFull = false; $('lbFull').classList.remove('on');
+  fitLB(p, big === p.url ? Infinity : 1920);
+  lbImg.classList.toggle('lo', small !== big);
+  lbImg.src = small; lbImg.alt = p.name;
   try { await lbImg.decode(); } catch {}
   const back = lbBg[1 - bgFront];
-  back.style.backgroundImage = `url("${p.url}")`; back.classList.add('on'); lbBg[bgFront].classList.remove('on'); bgFront = 1 - bgFront;
+  back.style.backgroundImage = `url("${small}")`; back.classList.add('on'); lbBg[bgFront].classList.remove('on'); bgFront = 1 - bgFront;
   syncLB();
   if (dir && !first && !reduceMotion) {
     lbImg.animate([{ opacity: 0, transform: `translateX(${dir * 60}px) scale(.97)` }, { opacity: 1, transform: 'none' }],
       { duration: 550, easing: 'cubic-bezier(.2,.8,.2,1)' });
   }
+  if (small !== big) loadSharp(p, big);
 }
+addEventListener('resize', () => { const p = view[current]; if (p && !lbFull) fitLB(p, (p.preview || p.url) === p.url ? Infinity : 1920); });
 function syncLB() {
   const p = view[current]; if (!p) return;
   $('lbDate').textContent = fmtLong.format(new Date(when(p)));
@@ -1634,6 +1668,8 @@ function syncLB() {
     isShared() ? ['Của', p.mine ? 'Bạn' : p.owner] : ['Album', inAlbums.join(', ') || '—'],
     ['Chế độ', p.public ? 'Công khai' : 'Riêng tư'],
   ].filter(Boolean).map(([k, v]) => `<dt>${k}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('');
+  $('lbFull').hidden = !p.preview || p.preview === p.url;
+  $('lbFull').title = `Xem ảnh gốc (${fmtSize(p.size)})`;
   const own = !isShared() || p.mine;
   $('lbPublic').hidden = !own;
   $('lbPublic').classList.toggle('on', !!p.public);
@@ -1648,7 +1684,7 @@ function buildStrip() {
   const s = $('strip'); s.innerHTML = '';
   view.forEach((p, i) => {
     const b = document.createElement('button'); b.className = 'th'; b.setAttribute('aria-label', p.name);
-    b.innerHTML = '<img loading="lazy" alt="">'; b.firstChild.src = p.url;
+    b.innerHTML = '<img loading="lazy" alt="">'; b.firstChild.src = p.thumb || p.url;
     b.onclick = () => go(i);
     s.appendChild(b);
   });
@@ -1666,6 +1702,11 @@ $('lbNext').onclick = () => go(current + 1);
 $('lbFav').onclick = () => toggleFav(view[current]);
 $('lbPublic').onclick = () => togglePublic(view[current]);
 $('lbDelete').onclick = () => removePhoto(view[current]);
+$('lbFull').onclick = () => {
+  const p = view[current]; if (!p || lbFull) return;
+  lbFull = true; toast(`Đang tải ảnh gốc (${fmtSize(p.size)})…`);
+  loadSharp(p, p.url);
+};
 $('lbDownload').onclick = () => { const p = view[current], a = document.createElement('a'); a.href = p.url; a.download = p.name; a.click(); };
 $('lbSlide').onclick = () => { location.href = 'slideshow.html' + slideQuery(view[current].id); };
 $('lbStage').addEventListener('click', e => { if (e.target === e.currentTarget) closeLB(); });
@@ -1740,11 +1781,24 @@ async function load() {
   if (!lb.classList.contains('open')) render();
 }
 movePill();
-load();
+load().then(checkImport);
+
+// Ảnh chép vào thư mục nhập trên máy chủ (xem README): quét ngay khi mở trang, nhập xong thì tải lại lưới ảnh
+async function checkImport(waiting = false) {
+  try {
+    const res = await fetch('/api/import', { method: waiting ? 'GET' : 'POST' });
+    const st = await res.json();
+    if (!res.ok) return;
+    if (st.busy || st.pending) {
+      if (!waiting) toast(`Đang nhập ${st.pending} ảnh từ thư mục trên máy…`);
+      setTimeout(() => checkImport(true), 3000);
+    } else if (waiting || st.added) load();
+  } catch {}
+}
 fetch('/api/status').then(r => r.json()).then(s => { if (s.user) $('navUserName').textContent = s.user.username; }).catch(() => {});
 // Quay lại tab thì tải lại danh sách, để thấy ảnh mới thêm từ thiết bị khác
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && !uploading) load();
+  if (document.visibilityState === 'visible' && !uploading) load().then(() => checkImport());
 });
 </script>
 </body>

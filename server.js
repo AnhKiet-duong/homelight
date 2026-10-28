@@ -6,7 +6,9 @@ const fsp = fs.promises;
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { promisify } = require('util');
+const media = require('./media');
 
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = __dirname;
@@ -17,6 +19,10 @@ const USERS_FILE = path.join(STORAGE_DIR, 'users.json');
 const SESSIONS_FILE = path.join(STORAGE_DIR, 'sessions.json');
 const LEGACY_UPLOAD_DIR = path.join(ROOT, 'uploads'); // bản cũ (chưa có tài khoản)
 const LEGACY_DATA_FILE = path.join(ROOT, 'data.json');
+// Chép ảnh vào import/<tên đăng nhập>/ là ảnh tự vào gallery của người đó (thư mục con thành album)
+const IMPORT_DIR = path.resolve(process.env.IMPORT_DIR || path.join(STORAGE_DIR, 'import'));
+const IMPORT_SCAN_MS = 10 * 1000;
+const IMPORT_MAX_SIZE = 200 * 1024 * 1024; // chép trên máy nên cho phép ảnh lớn hơn khi tải lên
 const MAX_SIZE = 50 * 1024 * 1024; // 50 MB / ảnh
 const SESSION_MS = 30 * 24 * 3600 * 1000; // đăng nhập giữ 30 ngày
 const LOGIN_MAX_FAILS = 10, LOGIN_LOCK_MS = 15 * 60 * 1000;
@@ -88,6 +94,7 @@ async function createUser(username, password, role) {
   if (users.some(u => u.username === username)) throw httpError(409, 'Tên đăng nhập đã có người dùng');
   const user = { id: crypto.randomBytes(6).toString('hex'), username, role, ...await hashPassword(password), created: Date.now() };
   await fsp.mkdir(imagesDir(user.id), { recursive: true });
+  await fsp.mkdir(importDir(user), { recursive: true }).catch(() => {});
   users.push(user);
   await saveUsers();
   return user;
@@ -97,6 +104,7 @@ async function createUser(username, password, role) {
 const userDir = id => path.join(USERS_DIR, id);
 const imagesDir = id => path.join(userDir(id), 'images');
 const photosFile = id => path.join(userDir(id), 'photos.json');
+const thumbsDir = id => path.join(userDir(id), 'thumbs'); // ảnh nhỏ <id ảnh>-sm.webp / -md.webp
 const photoCache = new Map();
 function getPhotos(uid) {
   if (!photoCache.has(uid)) photoCache.set(uid, readJson(photosFile(uid), []));
@@ -106,6 +114,48 @@ function savePhotos(uid, list) {
   photoCache.set(uid, list);
   return writeJson(photosFile(uid), list);
 }
+// Gộp nhiều lần ghi (vd. khi đang tạo ảnh nhỏ hàng loạt) thành một
+const saveTimers = new Map();
+function savePhotosSoon(uid) {
+  clearTimeout(saveTimers.get(uid));
+  saveTimers.set(uid, setTimeout(() => { saveTimers.delete(uid); savePhotos(uid, getPhotos(uid)); }, 2000));
+}
+
+// ---------- Ảnh nhỏ cho mạng chậm (xem media.js) ----------
+// Gửi cho trình duyệt: thumb (lưới ảnh), preview (xem phóng to), url (ảnh gốc), color (màu nền lúc đang tải)
+function photoView(p, url = p.url) {
+  const { hash, ...rest } = p;
+  return { ...rest, url, thumb: url + '?s=sm', preview: p.type === 'image/gif' ? url : url + '?s=md' }; // GIF giữ ảnh động
+}
+const thumbFailed = new Set();
+function makeThumbs(uid, photo, urgent) {
+  const key = uid + '/' + photo.id;
+  if (!media.hasSharp || thumbFailed.has(key)) return Promise.resolve(false);
+  return media.queueVariants(path.join(imagesDir(uid), photo.file), thumbsDir(uid), photo.id, urgent).then(info => {
+    const p = getPhotos(uid).find(x => x.id === photo.id);
+    if (p && info && (p.color !== info.color || (!p.w && info.w))) {
+      p.color = info.color;
+      if (!p.w && info.w) Object.assign(p, { w: info.w, h: info.h }); // ảnh nhập khi chưa có sharp
+      savePhotosSoon(uid);
+    }
+    return true;
+  }, err => {
+    thumbFailed.add(key);
+    console.error(`Không tạo được ảnh nhỏ cho ${photo.name}:`, err.message);
+    return false;
+  });
+}
+function dropThumbs(uid, photo) {
+  return Promise.all(Object.keys(media.SIZES).map(s => fsp.unlink(media.variantPath(thumbsDir(uid), photo.id, s)).catch(() => {})));
+}
+// ?s=sm|md: gửi ảnh nhỏ, chưa có thì tạo ngay; không tạo được thì gửi ảnh gốc
+async function serveVariant(res, uid, photo, size, cache) {
+  const file = media.variantPath(thumbsDir(uid), photo.id, size);
+  const exists = () => fsp.access(file).then(() => true, () => false);
+  if (await exists() || (await makeThumbs(uid, photo, true) && await exists())) return serveFile(res, file, cache);
+  return serveFile(res, path.join(imagesDir(uid), photo.file), 'private, max-age=600');
+}
+const sha1 = buf => crypto.createHash('sha1').update(buf).digest('hex');
 
 // ---------- Album của từng người: users/<id>/albums.json ----------
 // [{ id, name, photoIds: [...], cover: photoId | null, created }] — album chỉ giữ id ảnh, không sao chép file
@@ -201,15 +251,22 @@ function isLocalRequest(req) {
 // ---------- Helpers ----------
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
+// Trình duyệt nhận gzip không (nén chữ/JSON nhỏ đi 4–8 lần, rất có ích khi mạng chậm)
+const acceptsGzip = req => /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+
 function send(res, status, body, headers = {}) {
   const isJson = typeof body !== 'string' && !Buffer.isBuffer(body);
+  let data = isJson ? JSON.stringify(body) : body;
+  const zip = data.length > 1024 && acceptsGzip(res.req);
+  if (zip) data = zlib.gzipSync(data);
   res.writeHead(status, {
     'Content-Type': isJson ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8',
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store',
+    ...(zip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : {}),
     ...headers,
   });
-  res.end(isJson ? JSON.stringify(body) : body);
+  res.end(data);
 }
 
 function readBody(req, limit) {
@@ -242,13 +299,22 @@ async function serveFile(res, file, cache) {
   try {
     const stat = await fsp.stat(file);
     if (!stat.isFile()) throw new Error();
+    const type = STATIC_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    // Trang web: hỏi lại server mỗi lần nhưng chưa đổi thì chỉ trả 304 (không tải lại), có đổi thì gửi bản nén
+    const isText = /^text\/|json|svg/.test(type);
+    const etag = `W/"${stat.size}-${Math.round(stat.mtimeMs)}"`;
+    if (isText && res.req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag, 'Cache-Control': cache }); return res.end(); }
+    const zip = isText && acceptsGzip(res.req);
     res.writeHead(200, {
-      'Content-Type': STATIC_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
-      'Content-Length': stat.size,
+      'Content-Type': type,
+      ...(zip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : { 'Content-Length': stat.size }),
+      ...(isText ? { ETag: etag } : {}),
       'Cache-Control': cache,
       'X-Content-Type-Options': 'nosniff',
     });
-    fs.createReadStream(file).pipe(res);
+    if (res.req.method === 'HEAD') return res.end();
+    const stream = fs.createReadStream(file);
+    zip ? stream.pipe(zlib.createGzip()).pipe(res) : stream.pipe(res);
   } catch {
     send(res, 404, 'Không tìm thấy');
   }
@@ -379,15 +445,14 @@ function publicPhotos(viewerId) {
   const list = [];
   for (const u of users) {
     for (const p of getPhotos(u.id)) {
-      if (p.public) list.push({ ...p, fav: false, url: `/shared/${u.id}/${p.file}`, owner: u.username, mine: u.id === viewerId });
+      if (p.public) list.push({ ...photoView(p, `/shared/${u.id}/${p.file}`), fav: false, owner: u.username, mine: u.id === viewerId });
     }
   }
   return list;
 }
-function findPublicFile(ownerId, file) {
+function findPublicPhoto(ownerId, file) {
   if (!users.some(u => u.id === ownerId)) return null;
-  const photo = getPhotos(ownerId).find(p => p.public && p.file === file);
-  return photo ? path.join(imagesDir(ownerId), photo.file) : null;
+  return getPhotos(ownerId).find(p => p.public && p.file === file) || null;
 }
 
 // ---------- API: ảnh (của người đang đăng nhập) ----------
@@ -397,7 +462,7 @@ async function photosApi(req, res, parts, uid) {
   const photos = getPhotos(uid);
 
   // GET /api/photos — danh sách ảnh
-  if (req.method === 'GET' && !id) return send(res, 200, photos);
+  if (req.method === 'GET' && !id) return send(res, 200, photos.map(p => photoView(p)));
 
   // POST /api/photos/bulk — công khai / riêng tư nhiều ảnh cùng lúc: { ids: [...], public: true|false }
   if (req.method === 'POST' && id === 'bulk') {
@@ -423,6 +488,7 @@ async function photosApi(req, res, parts, uid) {
     await fsp.mkdir(imagesDir(uid), { recursive: true });
     await fsp.writeFile(path.join(imagesDir(uid), file), buf);
     const photo = {
+      hash: sha1(buf), // để nhận ra ảnh trùng khi chép vào thư mục nhập
       id: newId,
       name: decodeHeader(req.headers['x-filename'], 'image' + ext).slice(0, 200),
       file,
@@ -438,7 +504,8 @@ async function photosApi(req, res, parts, uid) {
     };
     photos.push(photo);
     await savePhotos(uid, photos);
-    return send(res, 201, photo);
+    makeThumbs(uid, photo);
+    return send(res, 201, photoView(photo));
   }
 
   const photo = photos.find(p => p.id === id);
@@ -451,7 +518,7 @@ async function photosApi(req, res, parts, uid) {
     if (typeof body.public === 'boolean') photo.public = body.public;
     if (typeof body.name === 'string' && body.name.trim()) photo.name = body.name.trim().slice(0, 200);
     await savePhotos(uid, photos);
-    return send(res, 200, photo);
+    return send(res, 200, photoView(photo));
   }
 
   // DELETE /api/photos/:id — xoá luôn khỏi các album
@@ -466,6 +533,7 @@ async function photosApi(req, res, parts, uid) {
       await saveAlbums(uid, albums);
     }
     await fsp.unlink(path.join(imagesDir(uid), photo.file)).catch(() => {});
+    await dropThumbs(uid, photo);
     return send(res, 200, { ok: true });
   }
 
@@ -476,7 +544,7 @@ async function photosApi(req, res, parts, uid) {
 function albumView(a, photos) {
   const ids = a.photoIds.filter(id => photos.some(p => p.id === id));
   const cover = photos.find(p => p.id === (ids.includes(a.cover) ? a.cover : ids[0]));
-  return { id: a.id, name: a.name, photoIds: ids, cover: cover ? cover.id : null, coverUrl: cover ? cover.url : null, created: a.created };
+  return { id: a.id, name: a.name, photoIds: ids, cover: cover ? cover.id : null, coverUrl: cover ? cover.url : null, coverThumb: cover ? cover.url + '?s=sm' : null, created: a.created };
 }
 function albumName(v) {
   const name = typeof v === 'string' ? v.trim().slice(0, 80) : '';
@@ -533,6 +601,154 @@ async function albumsApi(req, res, parts, uid) {
   send(res, 405, { error: 'Method not allowed' });
 }
 
+// ---------- Nhập ảnh từ ổ đĩa: chép file vào import/<tên đăng nhập>/ ----------
+// Server quét thư mục này mỗi 10 giây, chuyển ảnh vào gallery (thư mục gốc trống lại).
+// Thư mục con thành album cùng tên. Ảnh trùng và file không phải ảnh được để riêng cho bạn xem lại.
+const DUP_DIR = '_anh-trung', BAD_DIR = '_khong-phai-anh';
+const importDir = u => path.join(IMPORT_DIR, u.username);
+const importStates = new Map(); // uid -> { busy, pending, imported, duplicates, skipped, last }
+const importState = uid => importStates.get(uid) || importStates.set(uid, { busy: false, pending: 0, imported: 0, duplicates: 0, skipped: 0, last: null }).get(uid);
+const importStatus = u => ({ folder: importDir(u), ...importState(u.id) });
+
+// Liệt kê file ảnh trong thư mục nhập (kể cả thư mục con), bỏ qua file ẩn và các thư mục _anh-trung, _khong-phai-anh
+async function listImportFiles(root, rel = '') {
+  const out = [];
+  let entries;
+  try { entries = await fsp.readdir(path.join(root, rel), { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    if (e.name.startsWith('.') || /^(thumbs\.db|desktop\.ini)$/i.test(e.name)) continue;
+    const r = path.join(rel, e.name);
+    if (e.isDirectory()) { if (rel || (e.name !== DUP_DIR && e.name !== BAD_DIR)) out.push(...await listImportFiles(root, r)); }
+    else if (e.isFile()) out.push(r);
+  }
+  return out;
+}
+
+// Chuyển file sang thư mục khác (khác ổ đĩa thì copy rồi xoá); trùng tên thì thêm số
+async function moveFile(src, dest) {
+  try { await fsp.rename(src, dest); }
+  catch (err) {
+    if (err.code !== 'EXDEV') throw err;
+    await fsp.copyFile(src, dest, fs.constants.COPYFILE_EXCL);
+    await fsp.unlink(src);
+  }
+}
+async function setAside(src, root, dirName, fileName) {
+  const dir = path.join(root, dirName);
+  await fsp.mkdir(dir, { recursive: true });
+  const { name, ext } = path.parse(fileName);
+  let dest = path.join(dir, fileName);
+  for (let i = 2; fs.existsSync(dest); i++) dest = path.join(dir, `${name} (${i})${ext}`);
+  await moveFile(src, dest);
+}
+
+async function removeEmptyDirs(dir, isRoot = true) {
+  let entries;
+  try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
+  for (const e of entries) if (e.isDirectory() && !(isRoot && (e.name === DUP_DIR || e.name === BAD_DIR))) await removeEmptyDirs(path.join(dir, e.name), false);
+  if (!isRoot) await fsp.rmdir(dir).catch(() => {}); // chỉ xoá được khi đã trống
+}
+
+async function importUser(u) {
+  const root = importDir(u), uid = u.id, st = importState(uid);
+  await fsp.mkdir(root, { recursive: true });
+  const files = await listImportFiles(root);
+  st.pending = files.length;
+  if (!files.length) return;
+
+  // Ảnh tải lên từ bản cũ chưa có mã hash -> tính một lần để nhận ra ảnh trùng
+  const hashes = new Set();
+  let changed = 0;
+  for (const p of getPhotos(uid)) {
+    if (!p.hash && ++changed) p.hash = sha1(await fsp.readFile(path.join(imagesDir(uid), p.file)).catch(() => Buffer.alloc(0)));
+    hashes.add(p.hash);
+  }
+
+  st.busy = true;
+  const before = st.imported;
+  const toAlbums = new Map(); // tên album -> [id ảnh]
+  try {
+    for (const rel of files) {
+      if (!users.includes(u)) return; // tài khoản vừa bị xoá
+      const src = path.join(root, rel);
+      try {
+        const stat = await fsp.stat(src);
+        // File vừa được ghi trong 3 giây gần đây -> có thể đang chép dở, để lần quét sau
+        if (Date.now() - Math.max(stat.mtimeMs, stat.ctimeMs) < 3000 || !stat.size) continue;
+        if (stat.size > IMPORT_MAX_SIZE) { await setAside(src, root, BAD_DIR, path.basename(rel)); st.skipped++; continue; }
+
+        const head = Buffer.alloc(16);
+        const fh = await fsp.open(src, 'r');
+        try { await fh.read(head, 0, 16, 0); } finally { await fh.close(); }
+        const type = media.sniffType(head);
+        if (!type) { await setAside(src, root, BAD_DIR, path.basename(rel)); st.skipped++; continue; }
+
+        // Chuyển vào thư mục ảnh. Windows không cho chuyển file đang chép dở -> lỗi thì thử lại lần sau
+        const id = crypto.randomUUID(), file = id + IMAGE_TYPES[type], dest = path.join(imagesDir(uid), file);
+        await fsp.mkdir(imagesDir(uid), { recursive: true });
+        try { await moveFile(src, dest); }
+        catch (err) { if (['EBUSY', 'EPERM', 'EACCES'].includes(err.code)) continue; throw err; }
+
+        const buf = await fsp.readFile(dest);
+        const hash = sha1(buf);
+        if (hashes.has(hash)) {
+          await setAside(dest, root, DUP_DIR, path.basename(rel));
+          st.duplicates++;
+          continue;
+        }
+        hashes.add(hash);
+
+        const { w, h } = await media.imageSize(dest);
+        const photo = {
+          hash, id, name: path.basename(rel).slice(0, 200), file, url: '/uploads/' + file, type, size: buf.length, w, h,
+          taken: media.exifDate(buf) || Math.round(stat.mtimeMs), // không có EXIF thì lấy ngày sửa file
+          added: Date.now(), fav: false, public: false,
+        };
+        const list = getPhotos(uid);
+        list.push(photo);
+        if (++changed % 20 === 0) await savePhotos(uid, list);
+        makeThumbs(uid, photo);
+
+        const folder = path.dirname(rel);
+        if (folder !== '.') {
+          const name = folder.split(path.sep).join(' / ').slice(0, 80);
+          if (!toAlbums.has(name)) toAlbums.set(name, []);
+          toAlbums.get(name).push(id);
+        }
+        st.imported++;
+      } catch (err) {
+        console.error(`Không nhập được ${rel}:`, err.message);
+      } finally {
+        st.pending = Math.max(0, st.pending - 1);
+      }
+    }
+  } finally {
+    if (changed) await savePhotos(uid, getPhotos(uid));
+    if (toAlbums.size) {
+      const albums = getAlbums(uid);
+      for (const [name, ids] of toAlbums) {
+        let album = albums.find(a => a.name === name);
+        if (!album) albums.push(album = { id: crypto.randomBytes(6).toString('hex'), name, photoIds: [], cover: null, created: Date.now() });
+        album.photoIds = [...new Set([...album.photoIds, ...ids])];
+      }
+      await saveAlbums(uid, albums);
+    }
+    if (st.imported > before) { st.last = Date.now(); console.log(`Đã nhập ${st.imported - before} ảnh cho ${u.username}`); }
+    await removeEmptyDirs(root);
+    st.busy = false;
+  }
+}
+
+let scanning = null;
+function scanImports() {
+  if (!scanning) {
+    scanning = (async () => {
+      for (const u of [...users]) await importUser(u).catch(err => console.error('Lỗi nhập ảnh:', err.message));
+    })().finally(() => { scanning = null; });
+  }
+  return scanning;
+}
+
 // ---------- Server ----------
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -554,6 +770,14 @@ const server = http.createServer(async (req, res) => {
         if (!session) throw httpError(401, 'Cần đăng nhập');
         return await albumsApi(req, res, parts, session.user.id);
       }
+      // GET /api/import — thư mục nhập ảnh và tiến độ; POST /api/import — quét ngay
+      if (parts[1] === 'import' && parts.length === 2) {
+        if (!session) throw httpError(401, 'Cần đăng nhập');
+        const st = importState(session.user.id), before = st.imported;
+        if (req.method === 'POST') await Promise.race([scanImports(), new Promise(r => setTimeout(r, 1500))]);
+        else if (req.method !== 'GET') throw httpError(405, 'Method not allowed');
+        return send(res, 200, { ...importStatus(session.user), added: st.imported - before });
+      }
       return await authApi(req, res, parts, session);
     }
 
@@ -566,20 +790,29 @@ const server = http.createServer(async (req, res) => {
       return send(res, 401, 'Cần đăng nhập');
     }
 
+    // ?s=sm (ảnh trong lưới) / ?s=md (xem phóng to) -> ảnh nhỏ WebP, không có ?s là ảnh gốc
+    const size = Object.hasOwn(media.SIZES, url.searchParams.get('s')) ? url.searchParams.get('s') : null;
+
     if (url.pathname.startsWith('/uploads/')) {
       // Chỉ tìm trong thư mục của người đang đăng nhập -> không xem được ảnh của người khác
-      const file = safeJoin(imagesDir(session.user.id), url.pathname.slice('/uploads/'.length));
+      const uid = session.user.id;
+      const file = safeJoin(imagesDir(uid), url.pathname.slice('/uploads/'.length));
+      if (!file) return send(res, 400, 'Bad path');
       // Tên file là UUID nên nội dung không bao giờ đổi -> cache lâu (private: không cho proxy lưu)
-      return file ? serveFile(res, file, 'private, max-age=31536000, immutable') : send(res, 400, 'Bad path');
+      const cache = 'private, max-age=31536000, immutable';
+      const photo = size && getPhotos(uid).find(p => p.file === path.basename(file));
+      return photo ? serveVariant(res, uid, photo, size, cache) : serveFile(res, file, cache);
     }
 
     if (url.pathname.startsWith('/shared/')) {
       // /shared/<id chủ ảnh>/<file>: chỉ trả về khi ảnh đang được công khai
       const [ownerId, name, ...rest] = url.pathname.slice('/shared/'.length).split('/');
-      let file = null;
-      try { if (!rest.length && name) file = findPublicFile(ownerId, decodeURIComponent(name)); } catch { /* đường dẫn lỗi */ }
+      let photo = null;
+      try { if (!rest.length && name) photo = findPublicPhoto(ownerId, decodeURIComponent(name)); } catch { /* đường dẫn lỗi */ }
+      if (!photo) return send(res, 404, 'Không tìm thấy');
       // Cache ngắn vì chủ ảnh có thể chuyển lại thành riêng tư
-      return file ? serveFile(res, file, 'private, max-age=300') : send(res, 404, 'Không tìm thấy');
+      const cache = 'private, max-age=300';
+      return size ? serveVariant(res, ownerId, photo, size, cache) : serveFile(res, path.join(imagesDir(ownerId), photo.file), cache);
     }
 
     const file = safeJoin(PUBLIC_DIR, page);
@@ -611,5 +844,15 @@ server.listen(PORT, '0.0.0.0', () => {
   }
   console.log(`\nDữ liệu lưu tại: ${STORAGE_DIR}`);
   if (!users.length) console.log(`Chưa có tài khoản: mở http://localhost:${PORT} trên máy này để tạo tài khoản quản trị.`);
+  else {
+    console.log('Chép ảnh vào các thư mục sau là ảnh tự hiện trong gallery:');
+    for (const u of users) console.log(`  ${u.username}:  ${importDir(u)}`);
+  }
+  if (!media.hasSharp) console.log('\nChưa cài "sharp" nên chưa có ảnh nhỏ (web sẽ chậm khi mạng yếu). Chạy: npm install');
   console.log('');
+
+  setTimeout(scanImports, 1000);
+  setInterval(scanImports, IMPORT_SCAN_MS).unref();
+  // Tạo dần ảnh nhỏ cho các ảnh cũ chưa có
+  if (media.hasSharp) for (const u of users) for (const p of getPhotos(u.id)) if (!p.color) makeThumbs(u.id, p);
 });
