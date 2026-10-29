@@ -6,9 +6,18 @@
 <meta name="theme-color" content="#07070a">
 <title>My Gallery</title>
 <script>
-  // Giao diện đã chọn (Điện ảnh / Album giấy), đặt sớm để trang không bị nháy
-  try { document.documentElement.dataset.theme = localStorage.getItem('gallery-theme') === 'paper' ? 'paper' : 'cinema'; }
+  // Giao diện đã chọn (Điện ảnh / Album giấy / Ô màu), đặt sớm để trang không bị nháy
+  try { const t = localStorage.getItem('gallery-theme'); document.documentElement.dataset.theme = t === 'paper' || t === 'bento' ? t : 'cinema'; }
   catch { document.documentElement.dataset.theme = 'cinema'; }
+  // Font Lexend chỉ giao diện Ô màu dùng: chỉ tải khi chọn giao diện này
+  function loadBentoFont() {
+    if (document.getElementById('bentoFont')) return;
+    const l = document.createElement('link');
+    l.id = 'bentoFont'; l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap';
+    document.head.appendChild(l);
+  }
+  if (document.documentElement.dataset.theme === 'bento') loadBentoFont();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -495,7 +504,7 @@
   /* ---------- Chọn giao diện (dùng cho cả hai giao diện) ---------- */
   .theme-pick { position: relative; }
   .lb-btn .t { display: none; }
-  .paper-only { display: none !important; }
+  .paper-only, .bento-only { display: none !important; }
   .theme-menu {
     position: absolute; top: calc(100% + 10px); right: 0; z-index: 60; width: 300px; padding: 8px; border-radius: 18px;
     background: rgba(18,18,22,.94); border: 1px solid var(--line); box-shadow: 0 30px 70px -20px rgba(0,0,0,.7);
@@ -519,6 +528,14 @@
   .sw.paper { background: #f4efe6; box-shadow: 0 0 0 1px #d9d0bf; }
   .sw.paper::before { content: "Aa"; position: absolute; left: 0; right: 0; top: 3px; text-align: center; font-family: "Noto Serif Display", Georgia, serif; font-size: 13px; color: #1f1c17; }
   .sw.paper::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 6px; height: 12px; background: repeating-linear-gradient(90deg, #fff 0 14px, transparent 14px 17px); }
+  .sw.bento {
+    background: #eceff5; box-shadow: 0 0 0 1px #dfe3ec; padding: 5px; display: grid; gap: 3px;
+    grid-template-columns: 1.3fr 1fr 1fr; grid-template-rows: 1fr 1fr;
+  }
+  .sw.bento i { border-radius: 4px; }
+  .sw.bento i:nth-child(1) { grid-row: span 2; background: #11131a; }
+  .sw.bento i:nth-child(2) { background: #c6f432; } .sw.bento i:nth-child(3) { background: #ff6fa8; }
+  .sw.bento i:nth-child(4) { background: #3d5afe; } .sw.bento i:nth-child(5) { background: #fff; }
 
   /* =====================================================================
      Giao diện "Album giấy": nền giấy sáng, khung ảnh trắng, chữ kiểu tạp chí.
@@ -772,12 +789,369 @@
     html[data-theme="paper"] .lb-stage { padding: 8px 8px 12px; }
     html[data-theme="paper"] .lb-stage img { padding: 6px; }
   }
+
+  /* =====================================================================
+     Giao diện "Ô màu": lưới ô bo tròn kiểu bento, thanh bên album, màu tươi.
+     Phần lớn dùng chung markup và JS; thêm thanh bên, đầu trang bento và thanh dưới cho điện thoại.
+     ===================================================================== */
+  html[data-theme="bento"] {
+    --bg: #eceff5; --tile: #fff; --tile-2: #f5f7fb;
+    --surface: #fff; --surface-2: #f5f7fb; --line: #dfe3ec;
+    --text: #11131a; --muted: #4a5061; --faint: #8a90a0; --gold: #3d5afe;
+    --accent-soft: #e4e9ff; --lime: #c6f432; --pink: #ff6fa8; --orange: #ff9a3c; --teal: #19c3a6; --violet: #9b6bff;
+    --sans: "Lexend", system-ui, sans-serif; --display: var(--sans); --serif: var(--sans);
+    --side: 252px; --r: 22px;
+    color-scheme: light;
+  }
+  html[data-theme="bento"] .bento-only { display: revert !important; }
+  html[data-theme="bento"] :is(.cinema-only, .paper-only, .grain, .ambient, .scroll-cue) { display: none !important; }
+  html[data-theme="bento"] :is(#lbPos, #lbFile) { display: block !important; }
+  html[data-theme="bento"] #lbMeta { display: grid !important; }
+  html[data-theme="bento"] body { font-size: 14px; padding-left: calc(var(--side) + 8px); }
+  html[data-theme="bento"] ::selection { background: rgb(61 90 254 / .2); }
+  html[data-theme="bento"] :is(.btn, .seg button, .card, .th, .lb-btn):focus-visible { outline-color: var(--gold); }
+
+  /* Nút */
+  html[data-theme="bento"] .btn { height: 46px; border: 0; background: var(--tile); backdrop-filter: none; -webkit-backdrop-filter: none; font-weight: 500; }
+  html[data-theme="bento"] .btn:hover { background: var(--tile); box-shadow: 0 8px 20px -12px rgba(17,19,26,.35); }
+  html[data-theme="bento"] .btn.light { background: var(--gold); color: #fff; box-shadow: 0 8px 20px -8px rgb(61 90 254 / .7); }
+  html[data-theme="bento"] .btn.light:hover { background: #2f4cf0; }
+  .bpill {
+    height: 42px; border-radius: 999px; padding: 0 18px; border: 0; display: inline-flex; align-items: center; gap: 8px;
+    font-weight: 500; font-size: 14px; text-decoration: none; cursor: pointer; transition: transform .2s var(--ease);
+  }
+  .bpill svg { width: 15px; height: 15px; }
+  .bpill:hover { transform: translateY(-1px); }
+  .bpill.lime { background: var(--lime); color: var(--text); }
+  .bpill.ghost { background: rgba(255,255,255,.1); color: #fff; }
+  .bpill[aria-disabled="true"] { opacity: .35; pointer-events: none; }
+
+  /* Thanh bên */
+  .bside {
+    position: fixed; z-index: 45; left: 0; top: 0; bottom: 0; width: var(--side);
+    padding: calc(22px + env(safe-area-inset-top)) 16px 22px; flex-direction: column; gap: 4px; overflow-y: auto; scrollbar-width: none;
+  }
+  html[data-theme="bento"] .bside { display: flex !important; }
+  .blogo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; padding: 4px 10px 18px; text-decoration: none; letter-spacing: -.01em; }
+  .bmark { width: 34px; height: 34px; border-radius: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 6px; background: var(--text); flex: none; }
+  .bmark i { border-radius: 3px; }
+  .bmark i:nth-child(1) { background: var(--lime); } .bmark i:nth-child(2) { background: var(--pink); }
+  .bmark i:nth-child(3) { background: var(--gold); } .bmark i:nth-child(4) { background: var(--orange); }
+  .bnav {
+    display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 14px;
+    background: none; color: var(--muted); font-size: 14px; text-align: left; text-decoration: none; transition: background .2s;
+  }
+  .bnav:hover { background: rgba(255,255,255,.55); }
+  .bnav.on { background: var(--tile); color: var(--text); font-weight: 500; box-shadow: 0 1px 2px rgba(17,19,26,.06); }
+  .bnav.on svg { color: var(--gold); }
+  .bnav .ct { margin-left: auto; font-size: 12px; color: var(--faint); font-weight: 400; }
+  .bside h6 { margin: 18px 12px 6px; font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); display: flex; justify-content: space-between; }
+  .balb { padding: 7px 12px; }
+  .balb i {
+    width: 30px; height: 30px; border-radius: 9px; background: var(--tile) center / cover no-repeat; position: relative; flex: none;
+  }
+  .balb i::after { content: ""; position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--bg); background: var(--dot); }
+  .balb.on { box-shadow: 0 1px 2px rgba(17,19,26,.06), inset 3px 0 0 var(--dot); }
+  .balb b { font-weight: inherit; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .balb.new { color: var(--gold); }
+  .balb.new i { background: var(--accent-soft); display: grid; place-items: center; }
+  .balb.new i::after { display: none; }
+  .balb.new svg { width: 16px; height: 16px; }
+
+  /* Thanh trên */
+  html[data-theme="bento"] .nav, html[data-theme="bento"] .nav.scrolled {
+    position: relative; padding: calc(18px + env(safe-area-inset-top)) 28px 0 8px; gap: 10px;
+    background: none; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+  html[data-theme="bento"] .nav .brand { display: none; }
+  html[data-theme="bento"] .nav .slide-link { display: none; }
+  html[data-theme="bento"] .theme-pick { order: 1; margin-left: auto; }
+  html[data-theme="bento"] #navUpload { order: 2; }
+  html[data-theme="bento"] #navUser { order: 3; background: var(--violet); color: #fff; }
+  html[data-theme="bento"] .theme-menu { background: var(--tile); border: 0; border-radius: 22px; box-shadow: 0 30px 60px -20px rgba(17,19,26,.35), 0 0 0 1px var(--line); backdrop-filter: none; -webkit-backdrop-filter: none; width: 310px; }
+  html[data-theme="bento"] .theme-menu .opt { border-radius: 16px; }
+  html[data-theme="bento"] .theme-menu .opt[aria-checked="true"] { background: var(--accent-soft); }
+  html[data-theme="bento"] .theme-menu .opt:hover { background: var(--tile-2); }
+
+  /* Đầu trang bento */
+  .bento-head { padding: 18px 28px 0 8px; }
+  html[data-theme="bento"] .bento-head { display: grid !important; grid-template-columns: 1.15fr 1fr .75fr .75fr; grid-template-rows: 150px 150px; gap: 14px; }
+  .bt { background: var(--tile); border-radius: var(--r); padding: 20px; position: relative; overflow: hidden; margin: 0; }
+  .bhello { grid-row: span 2; background: var(--text); color: #fff; display: flex; flex-direction: column; }
+  .bhello .k { font-size: 12px; color: #9aa1b5; }
+  .bhello h1 { font-size: clamp(26px, 2.4vw, 34px); line-height: 1.15; font-weight: 600; margin: 8px 0 0; letter-spacing: -.02em; }
+  .bhello h1 span { color: var(--lime); }
+  .bhello p { color: #b8bdcc; margin: 10px 0 0; max-width: 32ch; font-weight: 300; }
+  .bhello .acts { margin-top: auto; display: flex; gap: 8px; flex-wrap: wrap; padding-top: 14px; }
+  .bfeat { grid-row: span 2; padding: 0; background: var(--tile-2); cursor: zoom-in; }
+  .bfeat img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity .6s; }
+  .bfeat img.fading { opacity: .15; }
+  .bfeat .tag {
+    position: absolute; top: 12px; left: 12px; background: var(--pink); color: #fff; font-size: 12px; font-weight: 500;
+    padding: 5px 11px; border-radius: 999px; display: flex; gap: 6px; align-items: center;
+  }
+  .bfeat .tag svg { width: 13px; height: 13px; }
+  .bfeat .cap {
+    position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 16px;
+    background: rgba(255,255,255,.86); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .bfeat .cap b { font-weight: 500; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bfeat .cap > div:first-child { min-width: 0; }
+  .bfeat .cap small { color: var(--faint); font-size: 12px; }
+  .bdots { margin-left: auto; display: flex; gap: 4px; flex: none; }
+  .bdots i { width: 6px; height: 6px; border-radius: 9px; background: var(--line); transition: width .4s var(--ease), background .4s; }
+  .bdots i.on { width: 18px; background: var(--text); }
+  .bstat .n { font-size: 40px; font-weight: 600; line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+  .bstat .l { color: var(--faint); font-size: 13px; margin-top: 6px; }
+  .bstat .ic { position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; }
+  .bstat .ic svg { width: 18px; height: 18px; }
+  .bstat.a { background: var(--lime); } .bstat.a .l { color: #3c4a10; } .bstat.a .ic { background: rgba(17,19,26,.08); }
+  .bstat.b .ic { background: #ffe4ee; color: var(--pink); }
+  .bstat.c .ic { background: #fff0e0; color: var(--orange); }
+  .bspark { position: absolute; left: 20px; right: 20px; bottom: 16px; display: flex; align-items: flex-end; gap: 4px; height: 30px; }
+  .bspark i { flex: 1; min-height: 3px; border-radius: 3px; background: rgba(17,19,26,.18); }
+  .bspark i:last-child { background: var(--text); }
+  .bmemo { padding: 0; background: var(--gold); color: #fff; display: flex; cursor: pointer; text-align: left; border: 0; font: inherit; }
+  .bmemo .tx { padding: 16px 10px 16px 18px; display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .bmemo .tx small { font-size: 12px; opacity: .8; }
+  .bmemo .tx b { font-weight: 600; font-size: 15px; line-height: 1.25; margin-top: 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; word-break: break-word; }
+  .bmemo .tx span { margin-top: auto; font-size: 12px; opacity: .85; }
+  .bmemo img { width: 40%; object-fit: cover; border-radius: 16px; margin: 8px; min-width: 0; }
+  .bento-head.is-empty :is(.bfeat, .bmemo) { visibility: hidden; }
+
+  /* Thanh lọc: chip */
+  html[data-theme="bento"] .toolbar { position: sticky; top: 0; max-width: none; margin: 0; padding: 14px 28px 10px 8px; background: var(--bg); }
+  html[data-theme="bento"] .toolbar-inner { padding: 0; gap: 8px; border: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  html[data-theme="bento"] .search { order: 0; flex: 0 1 300px; height: 40px; padding: 0 16px; border-radius: 999px; background: var(--tile); color: var(--faint); }
+  html[data-theme="bento"] .seg { order: 1; background: none; padding: 0; gap: 8px; }
+  html[data-theme="bento"] .seg .pill { display: none; }
+  html[data-theme="bento"] .seg button { height: 40px; padding: 0 16px; background: var(--tile); color: var(--muted); font-weight: 400; transition: background .2s, color .2s; }
+  html[data-theme="bento"] .seg button:hover { color: var(--text); }
+  html[data-theme="bento"] .seg button.on { background: var(--text); color: #fff; }
+  html[data-theme="bento"] #selBtn { order: 2; margin-left: auto; height: 40px; padding: 0 16px; border: 0; background: var(--tile); color: var(--muted); font-weight: 400; }
+  html[data-theme="bento"] #selBtn.on { background: var(--gold); color: #fff; }
+
+  /* Album: trên máy tính nằm ở thanh bên; trên điện thoại hiện thành hàng chip */
+  html[data-theme="bento"] main { max-width: none; margin: 0; padding: 6px 28px 120px 8px; }
+  html[data-theme="bento"] .albums { display: none; }
+  html[data-theme="bento"] .album-head { margin: 10px 0 0; align-items: center; }
+  html[data-theme="bento"] .album-head h2 { font-style: normal; font-weight: 600; letter-spacing: -.02em; font-size: clamp(26px, 3vw, 34px); }
+  html[data-theme="bento"] .album-head .count { padding: 0; letter-spacing: 0; text-transform: none; font-size: 13px; }
+  html[data-theme="bento"] .album-head .btn { height: 38px; }
+
+  /* Nhóm theo tháng */
+  html[data-theme="bento"] .year { margin-top: 26px; }
+  html[data-theme="bento"] .year:first-child { margin-top: 14px; }
+  html[data-theme="bento"] .year-head { align-items: baseline; gap: 10px; margin: 0 2px 12px; }
+  html[data-theme="bento"] .year-num { font-size: 22px; font-weight: 600; letter-spacing: -.02em; line-height: 1.3; color: var(--text); -webkit-text-stroke: 0; }
+  html[data-theme="bento"] .year-meta { padding: 0; display: flex; gap: 8px; align-items: baseline; }
+  html[data-theme="bento"] .year-meta b { font-style: normal; font-size: 13px; font-weight: 400; color: var(--faint); }
+  html[data-theme="bento"] .year-meta span { letter-spacing: 0; text-transform: none; font-size: 13px; }
+  html[data-theme="bento"] .year-meta b::after { content: "·"; margin-left: 8px; }
+  html[data-theme="bento"] .year-head::after { display: none; }
+
+  /* Lưới ô: ảnh ngang chiếm 2 cột, ảnh dọc 2 hàng, ảnh yêu thích ô lớn */
+  html[data-theme="bento"] .grid { columns: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); grid-auto-rows: 150px; grid-auto-flow: dense; gap: 12px; }
+  html[data-theme="bento"] .card { margin: 0; perspective: none; min-width: 0; }
+  html[data-theme="bento"] .card.w { grid-column: span 2; }
+  html[data-theme="bento"] .card.h { grid-row: span 2; }
+  html[data-theme="bento"] .card.big { grid-column: span 2; grid-row: span 2; }
+  html[data-theme="bento"] .tilt, html[data-theme="bento"] .card.hover .tilt {
+    height: 100%; transform: none; border-radius: 18px; background: var(--ph, var(--tile)); box-shadow: none; transition: outline-color .2s;
+  }
+  html[data-theme="bento"] .tilt img { width: 100%; height: 100%; object-fit: cover; transition: transform .45s var(--ease); }
+  html[data-theme="bento"] .card.hover .tilt img { transform: scale(1.05); }
+  html[data-theme="bento"] .card.hover .tilt { outline: 3px solid var(--gold); outline-offset: 3px; overflow: hidden; }
+  html[data-theme="bento"] .glare { display: none; }
+  html[data-theme="bento"] .info {
+    left: 8px; right: 8px; bottom: 8px; padding: 8px 12px; border-radius: 12px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0 8px;
+    background: rgba(255,255,255,.9); color: var(--text); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transform: translateY(6px);
+  }
+  html[data-theme="bento"] .info .d { order: 2; font-style: normal; font-size: 12px; color: var(--faint); white-space: nowrap; }
+  html[data-theme="bento"] .info .n { order: 1; flex: 1; min-width: 0; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text); }
+  html[data-theme="bento"] .info .o { order: 3; flex-basis: 100%; color: var(--gold); }
+  html[data-theme="bento"] .card:is(.sq, .h) .info .d { display: none; }
+  html[data-theme="bento"] .fav { top: 10px; right: 10px; width: 30px; height: 30px; border: 0; background: rgba(255,255,255,.9); color: var(--faint); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  html[data-theme="bento"] .fav svg { width: 14px; height: 14px; }
+  html[data-theme="bento"] .fav.on { background: var(--pink); color: #fff; }
+  html[data-theme="bento"] .badge-pub { top: 10px; left: 10px; height: 24px; border: 0; background: var(--teal); color: #fff; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  html[data-theme="bento"] .check { top: 10px; left: 10px; width: 26px; height: 26px; border-color: #fff; background: rgba(17,19,26,.2); }
+  html[data-theme="bento"] body.selecting .badge-pub { left: 44px; }
+  html[data-theme="bento"] .card.sel .check { background: var(--gold); border-color: var(--gold); color: #fff; }
+  html[data-theme="bento"] .card.sel .tilt { background: var(--accent-soft); box-shadow: 0 0 0 3px var(--gold); }
+  html[data-theme="bento"] .card.sel .tilt img { transform: scale(.9); border-radius: 12px; }
+  html[data-theme="bento"] .card:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; border-radius: 18px; }
+
+  /* Trống, thả file, tải lên, thông báo, thanh chọn, hộp thoại */
+  html[data-theme="bento"] .empty { border: 2px dashed var(--line); border-radius: var(--r); background: var(--tile); }
+  html[data-theme="bento"] .empty .ring { border-color: var(--line); color: var(--gold); }
+  html[data-theme="bento"] .empty .ring::after { border-color: var(--line); }
+  html[data-theme="bento"] .empty h2 { text-transform: none; letter-spacing: -.02em; font-weight: 600; }
+  html[data-theme="bento"] .drop { background: rgba(236,239,245,.82); }
+  html[data-theme="bento"] .drop .box { border-color: var(--gold); background: var(--tile); }
+  html[data-theme="bento"] .drop .box b { text-transform: none; letter-spacing: -.02em; font-weight: 600; }
+  html[data-theme="bento"] .upl { background: var(--tile); border: 0; box-shadow: 0 20px 50px -20px rgba(17,19,26,.4); }
+  html[data-theme="bento"] .upl .bar { background: var(--tile-2); height: 6px; }
+  html[data-theme="bento"] .upl .bar i { background: var(--gold); }
+  html[data-theme="bento"] .toast { background: var(--text); color: #fff; }
+  html[data-theme="bento"] .selbar { margin-left: calc(var(--side) / 2); background: var(--text); color: #fff; border: 0; padding: 6px 6px 6px 20px; box-shadow: 0 20px 40px -14px rgba(17,19,26,.6); }
+  html[data-theme="bento"] .selbar .btn { height: 38px; background: rgba(255,255,255,.1); color: #fff; box-shadow: none; }
+  html[data-theme="bento"] .selbar .btn:hover { background: rgba(255,255,255,.18); }
+  html[data-theme="bento"] .selbar .btn.light, html[data-theme="bento"] #selDone { background: var(--lime); color: var(--text); }
+  html[data-theme="bento"] .dlg { background: var(--tile); border: 0; border-radius: var(--r); box-shadow: 0 30px 80px -20px rgba(17,19,26,.45); }
+  html[data-theme="bento"] .dlg::backdrop { background: rgba(17,19,26,.3); }
+  html[data-theme="bento"] .dlg h3 { font-style: normal; font-weight: 600; letter-spacing: -.02em; }
+  html[data-theme="bento"] .dlg input { background: var(--tile-2); border-color: var(--line); }
+  html[data-theme="bento"] .dlg .btn { background: var(--tile-2); }
+  html[data-theme="bento"] .dlg .btn.light { background: var(--gold); color: #fff; }
+  html[data-theme="bento"] .dlg input:focus, html[data-theme="bento"] .dlg .pick button:hover { border-color: var(--gold); }
+  html[data-theme="bento"] .dlg .pick button { background: var(--tile-2); }
+
+  /* Xem ảnh: ảnh trên nền tối bo tròn, thông tin thành các ô bên phải */
+  html[data-theme="bento"] .lb {
+    display: grid; grid-template-columns: minmax(0, 1fr) 330px; grid-template-rows: minmax(0, 1fr) auto; column-gap: 14px;
+    padding: calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));
+    background: rgba(236,239,245,.97);
+  }
+  html[data-theme="bento"] .lb-bg { display: none; }
+  html[data-theme="bento"] .lb-stage { grid-column: 1; grid-row: 1; padding: 30px 90px 16px; background: var(--text); border-radius: 26px 26px 0 0; }
+  html[data-theme="bento"] .lb-stage img { border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  html[data-theme="bento"] .strip { grid-column: 1; grid-row: 2; padding: 4px 16px 16px; background: var(--text); border-radius: 0 0 26px 26px; }
+  html[data-theme="bento"] .th { border-radius: 10px; }
+  html[data-theme="bento"] .th.on { box-shadow: 0 0 0 2px var(--text), 0 0 0 4px var(--lime); }
+  html[data-theme="bento"] .lb-nav { width: 48px; height: 48px; border: 0; background: rgba(255,255,255,.14); color: #fff; }
+  html[data-theme="bento"] .lb-nav:hover { background: rgba(255,255,255,.24); }
+  html[data-theme="bento"] .lb-top {
+    grid-column: 2; grid-row: 1 / 3; display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 8px;
+    padding: 0; overflow-y: auto; scrollbar-width: none;
+  }
+  html[data-theme="bento"] .lb-title { grid-column: 1 / -1; order: 1; background: var(--tile); border-radius: var(--r); padding: 18px; }
+  html[data-theme="bento"] .lb-title .k { font-size: 12px; font-weight: 500; color: var(--gold); }
+  html[data-theme="bento"] .lb-title .d { font-style: normal; font-weight: 600; font-size: 24px; line-height: 1.2; letter-spacing: -.02em; margin: 4px 0 2px; }
+  html[data-theme="bento"] .lb-title .s { display: none; }
+  html[data-theme="bento"] .lb-title .fn { font-size: 13px; color: var(--faint); word-break: break-all; }
+  html[data-theme="bento"] .meta { grid-template-columns: auto 1fr; gap: 10px 16px; margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; }
+  html[data-theme="bento"] .meta dt { color: var(--faint); }
+  html[data-theme="bento"] .meta dd { margin: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  html[data-theme="bento"] .lb-top .lb-btn:not(.lb-nav) {
+    width: auto; height: 46px; border-radius: 16px; border: 0; background: var(--tile); color: var(--text);
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 500;
+  }
+  html[data-theme="bento"] .lb-btn svg { width: 15px; height: 15px; }
+  html[data-theme="bento"] .lb-top .lb-btn:hover { transform: none; box-shadow: 0 8px 20px -12px rgba(17,19,26,.35); }
+  html[data-theme="bento"] .lb-btn .t { display: inline; }
+  html[data-theme="bento"] #lbFav.on { background: var(--pink); color: #fff; }
+  html[data-theme="bento"] #lbPublic.on { background: var(--teal); color: #fff; }
+  html[data-theme="bento"] #lbFull.on { background: var(--gold); color: #fff; }
+  html[data-theme="bento"] #lbFull { letter-spacing: 0; font-family: var(--sans); }
+  html[data-theme="bento"] #lbFav { order: 2; } html[data-theme="bento"] #lbPublic { order: 3; }
+  html[data-theme="bento"] #lbDownload { order: 4; } html[data-theme="bento"] #lbSlide { order: 5; }
+  html[data-theme="bento"] #lbFull { order: 5; grid-column: 1 / -1; } html[data-theme="bento"] #lbFull .hd-t { display: none; }
+  html[data-theme="bento"] #lbDelete { order: 6; grid-column: 1 / -1; color: #d0313d; }
+  html[data-theme="bento"] #lbClose { order: 0; grid-column: 1 / -1; justify-self: end; width: 46px; padding: 0; border-radius: 50%; }
+
+  /* Thanh dưới cho điện thoại */
+  .btab {
+    position: fixed; left: 14px; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 60;
+    background: var(--text); border-radius: 24px; padding: 8px; justify-content: space-around; align-items: center;
+    box-shadow: 0 20px 40px -14px rgba(17,19,26,.6);
+  }
+  .btab button { border: 0; background: none; color: #8d93a6; display: grid; justify-items: center; gap: 2px; font-size: 10px; width: 58px; padding: 4px 0; }
+  .btab button.on { color: #fff; }
+  .btab .plus { width: 52px; height: 52px; border-radius: 18px; background: var(--lime); color: var(--text); place-items: center; padding: 0; }
+  .btab .plus svg { width: 22px; height: 22px; }
+
+  @media (min-width: 761px) { html[data-theme="bento"] .btab { display: none !important; } }
+  @media (max-width: 1100px) and (min-width: 761px) {
+    html[data-theme="bento"] .bento-head { grid-template-columns: 1fr 1fr .8fr; grid-template-rows: 150px 150px; }
+    html[data-theme="bento"] :is(.bstat.b, .bstat.c) { display: none; }
+  }
+  @media (max-width: 760px) {
+    html[data-theme="bento"] body { padding-left: 0; }
+    html[data-theme="bento"] .bside { display: none !important; }
+    html[data-theme="bento"] .btab { display: flex !important; }
+    html[data-theme="bento"] .nav, html[data-theme="bento"] .nav.scrolled { padding: calc(14px + env(safe-area-inset-top)) 14px 0; }
+    html[data-theme="bento"] .nav .brand { display: flex; margin-right: auto; }
+    html[data-theme="bento"] .theme-pick { margin-left: 0; }
+    html[data-theme="bento"] .brand .mark { display: none; }
+    html[data-theme="bento"] .brand b { font-family: var(--sans); font-weight: 700; letter-spacing: -.01em; text-transform: none; font-size: 17px; }
+    html[data-theme="bento"] .brand::before { content: ""; width: 34px; height: 34px; border-radius: 11px; background: conic-gradient(from 90deg, var(--lime) 0 25%, var(--gold) 0 50%, var(--orange) 0 75%, var(--pink) 0) content-box, var(--text); padding: 7px; }
+    html[data-theme="bento"] .nav .btn { height: 42px; width: 42px; }
+    html[data-theme="bento"] #navUpload, html[data-theme="bento"] #themeBtn { display: none; }
+    html[data-theme="bento"] .theme-menu { position: fixed; top: auto; bottom: calc(96px + env(safe-area-inset-bottom)); left: 12px; right: 12px; width: auto; }
+    html[data-theme="bento"] .bento-head { padding: 14px 14px 0; grid-template-columns: 1fr 1fr; grid-template-rows: auto 210px 120px; gap: 10px; }
+    .bhello { grid-column: span 2; grid-row: auto; }
+    .bhello h1 { font-size: 26px; } .bhello p { display: none; }
+    .bfeat { grid-column: span 2; grid-row: auto; }
+    .bstat.c, .bmemo { display: none; }
+    .bstat .n { font-size: 32px; }
+    html[data-theme="bento"] .toolbar { padding: 12px 14px 8px; }
+    html[data-theme="bento"] .toolbar-inner { flex-wrap: wrap; row-gap: 8px; }
+    html[data-theme="bento"] .search { flex: 1 1 0; }
+    html[data-theme="bento"] #selBtn { margin-left: 0; order: 1; }
+    html[data-theme="bento"] .seg { flex: 1 1 100%; order: 2; overflow-x: auto; scrollbar-width: none; }
+    html[data-theme="bento"] .seg button { flex: none; height: 36px; padding: 0 14px; }
+    html[data-theme="bento"] main { padding: 4px 14px 130px; }
+    html[data-theme="bento"] .albums { display: flex; gap: 8px; padding: 0 0 6px; scroll-snap-type: none; }
+    html[data-theme="bento"] .alb {
+      width: auto; height: 36px; padding: 4px 12px 4px 4px; border: 0; border-radius: 999px; overflow: visible;
+      display: inline-flex; align-items: center; gap: 8px; background-color: var(--tile); background-size: 0 0;
+    }
+    html[data-theme="bento"] .alb::before { content: ""; width: 28px; height: 28px; border-radius: 50%; flex: none; background-image: inherit; background-size: cover; background-position: center; background-color: var(--tile-2); }
+    html[data-theme="bento"] .alb.all::before { background-image: var(--cover, none); }
+    html[data-theme="bento"] .alb::after { display: none; }
+    html[data-theme="bento"] .alb span { position: static; }
+    html[data-theme="bento"] .alb b { font-size: 13px; font-weight: 400; }
+    html[data-theme="bento"] .alb small { display: none; }
+    html[data-theme="bento"] .alb.on { background-color: var(--text); color: #fff; box-shadow: none; }
+    html[data-theme="bento"] .alb.new { padding: 0 14px; color: var(--gold); }
+    html[data-theme="bento"] .alb.new::before { display: none; }
+    html[data-theme="bento"] .alb.new span { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+    html[data-theme="bento"] .alb.new svg { width: 16px; height: 16px; margin: 0; }
+    html[data-theme="bento"] .grid { grid-template-columns: repeat(3, 1fr); grid-auto-rows: 104px; gap: 6px; }
+    html[data-theme="bento"] .card.w { grid-column: span 2; }
+    html[data-theme="bento"] .tilt, html[data-theme="bento"] .card.hover .tilt { border-radius: 12px; }
+    html[data-theme="bento"] .info { display: none; }
+    html[data-theme="bento"] .fav { width: 24px; height: 24px; top: 6px; right: 6px; }
+    html[data-theme="bento"] .fav:not(.on) { display: none; }
+    html[data-theme="bento"] .fav svg { width: 11px; height: 11px; }
+    html[data-theme="bento"] .badge-pub { top: 6px; left: 6px; height: 20px; font-size: 10px; padding: 0 7px; }
+    html[data-theme="bento"] .badge-pub svg { display: none; }
+    html[data-theme="bento"] .check { top: 6px; left: 6px; }
+    html[data-theme="bento"] body.selecting .badge-pub { left: 38px; }
+    html[data-theme="bento"] .selbar { margin-left: 0; bottom: calc(96px + env(safe-area-inset-bottom)); border-radius: 22px; padding: 10px; }
+    html[data-theme="bento"] .toast, html[data-theme="bento"] .upl { bottom: calc(96px + env(safe-area-inset-bottom)); }
+    html[data-theme="bento"] body.selecting .toast { bottom: calc(220px + env(safe-area-inset-bottom)); }
+    html[data-theme="bento"] .lb { display: flex; padding: 0; background: var(--text); }
+    html[data-theme="bento"] .lb-stage, html[data-theme="bento"] .strip { border-radius: 0; }
+    html[data-theme="bento"] .lb-stage { padding: 8px 8px 12px; }
+    html[data-theme="bento"] .lb-top { display: flex; flex-wrap: wrap; justify-content: space-between; padding: calc(12px + env(safe-area-inset-top)) 12px 8px; gap: 10px 4px; overflow: visible; }
+    html[data-theme="bento"] .lb-title { margin: 0; flex: 1 1 100%; min-width: 0; padding: 0 50px 0 2px; background: none; color: #fff; }
+    html[data-theme="bento"] #lbClose { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 12px; }
+    html[data-theme="bento"] .lb-title .d { font-size: 17px; margin: 0; }
+    html[data-theme="bento"] #lbFile { display: none !important; }
+    html[data-theme="bento"] .lb-title .k { color: var(--lime); }
+    html[data-theme="bento"] #lbMeta { display: none !important; }
+    html[data-theme="bento"] .lb-top .lb-btn:not(.lb-nav) { width: 38px; height: 38px; padding: 0; border-radius: 50%; background: rgba(255,255,255,.12); color: #fff; }
+    html[data-theme="bento"] .lb-btn .t { display: none; }
+    html[data-theme="bento"] #lbFull .hd-t { display: inline; font-size: 10px; }
+  }
 </style>
 </head>
 <body>
 
 <div class="grain" aria-hidden="true"></div>
 <div class="ambient" aria-hidden="true"><i></i><i></i></div>
+
+<aside class="bside bento-only" aria-label="Điều hướng">
+  <a class="blogo" href="#"><span class="bmark"><i></i><i></i><i></i><i></i></span>My Gallery</a>
+  <button class="bnav" data-go="all"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>Tất cả ảnh<span class="ct" id="bCtAll"></span></button>
+  <button class="bnav" data-go="fav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg>Yêu thích<span class="ct" id="bCtFav"></span></button>
+  <button class="bnav" data-go="shared"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>Ảnh chung<span class="ct" id="bCtShared"></span></button>
+  <a class="bnav slide-link" href="slideshow.html"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Trình chiếu</a>
+  <h6>Album <span id="bCtAlb"></span></h6>
+  <div id="bAlbums"></div>
+</aside>
 
 <nav class="nav" id="nav">
   <a class="brand" href="#top">
@@ -806,6 +1180,7 @@
       <div class="h">Chọn giao diện</div>
       <button class="opt" role="menuitemradio" data-theme="cinema"><span class="sw cinema"></span><span><b>Điện ảnh</b><small>Nền tối, ảnh nghiêng 3D, ánh sáng theo màu ảnh</small></span><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg></button>
       <button class="opt" role="menuitemradio" data-theme="paper"><span class="sw paper"></span><span><b>Album giấy</b><small>Nền giấy sáng, khung ảnh trắng, chữ kiểu tạp chí</small></span><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg></button>
+      <button class="opt" role="menuitemradio" data-theme="bento"><span class="sw bento"><i></i><i></i><i></i><i></i><i></i></span><span><b>Ô màu</b><small>Lưới ô bo tròn, thanh bên album, màu tươi</small></span><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg></button>
     </div>
   </div>
   <input id="file" type="file" accept="image/*" multiple hidden>
@@ -830,6 +1205,31 @@
       <div class="pstats"><div><b id="pCount">0</b><span>Ảnh</span></div><div><b id="pFav">0</b><span>Yêu thích</span></div><div><b id="pAlb">0</b><span>Album</span></div></div>
     </div>
   </section>
+</header>
+
+<header class="bento-head bento-only" id="bentoTop">
+  <div class="bt bhello">
+    <div class="k" id="bDate"></div>
+    <h1 id="bHello">Chào bạn,<br>đây là những khoảnh khắc của bạn</h1>
+    <p>Kéo thả ảnh hoặc dán bằng Ctrl+V vào bất kỳ đâu để tải lên.</p>
+    <div class="acts">
+      <a class="bpill lime slide-link" href="slideshow.html"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Trình chiếu</a>
+      <button class="bpill ghost" id="bUpload">Tải ảnh lên</button>
+    </div>
+  </div>
+  <figure class="bt bfeat" id="bFeat">
+    <img id="bFeatImg" alt="">
+    <span class="tag"><svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></svg>Ảnh nổi bật</span>
+    <figcaption class="cap"><div><b id="bFeatName"></b><small id="bFeatDate"></small></div><div class="bdots" id="bDots"></div></figcaption>
+  </figure>
+  <div class="bt bstat a"><div class="n" id="bCount">0</div><div class="l">ảnh đã lưu</div>
+    <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></span>
+    <div class="bspark" id="bSpark" title="Số ảnh theo tháng, 7 tháng gần nhất"></div></div>
+  <div class="bt bstat b"><div class="n" id="bFav">0</div><div class="l">yêu thích</div>
+    <span class="ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></svg></span></div>
+  <button class="bt bmemo" id="bMemo"><div class="tx"><small id="bMemoK"></small><b id="bMemoT"></b><span id="bMemoS"></span></div><img id="bMemoImg" alt=""></button>
+  <div class="bt bstat c"><div class="n" id="bAlb">0</div><div class="l">album</div>
+    <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span></div>
 </header>
 
 <header class="hero cinema-only" id="top">
@@ -918,6 +1318,14 @@
   <button class="btn" id="selDownload">Tải về</button>
   <button class="btn" id="selDone">Xong</button>
 </div>
+
+<nav class="btab bento-only" id="bTab" aria-label="Điều hướng nhanh">
+  <button data-go="all"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="10" rx="2"/><rect x="13" y="3" width="8" height="6" rx="2"/><rect x="13" y="11" width="8" height="10" rx="2"/><rect x="3" y="15" width="8" height="6" rx="2"/></svg>Ảnh</button>
+  <button data-go="albums"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Album</button>
+  <button class="plus" data-go="upload" aria-label="Tải ảnh lên"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button data-go="fav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg>Yêu thích</button>
+  <button data-go="theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Giao diện</button>
+</nav>
 
 <dialog class="dlg" id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
 
@@ -1044,9 +1452,10 @@ function updateHero() {
   heroKey = key; heroList = src;
   $('top').classList.toggle('is-empty', !src.length);
   $('paperTop').classList.toggle('is-empty', !src.length);
+  $('bentoTop').classList.toggle('is-empty', !src.length);
   clearInterval(heroTimer);
   if (!src.length) { heroLayers.forEach(l => l.classList.remove('on')); setAmbient(); return; }
-  $('heroDots').innerHTML = src.length > 1 ? src.map(() => '<i></i>').join('') : '';
+  $('heroDots').innerHTML = $('bDots').innerHTML = src.length > 1 ? src.map(() => '<i></i>').join('') : '';
   showHero(0);
   if (src.length > 1) heroTimer = setInterval(() => showHero(heroIdx + 1), 7000);
 }
@@ -1063,17 +1472,19 @@ async function showHero(i) {
   back.classList.add('on'); heroLayers[heroFront].classList.remove('on');
   heroFront = 1 - heroFront;
   $('heroDate').textContent = $('featDate').textContent = fmtLong.format(new Date(when(p)));
-  $('heroName').textContent = $('featName').textContent = cleanName(p.name);
+  $('heroName').textContent = $('featName').textContent = $('bFeatName').textContent = cleanName(p.name);
+  $('bFeatDate').textContent = $('featDate').textContent;
   $('featIdx').textContent = heroList.length > 1 ? `Ảnh nổi bật · ${heroIdx + 1} / ${heroList.length}` : 'Ảnh nổi bật';
   showFeature(p.preview || p.url);
   [...$('heroDots').children].forEach((d, k) => { d.classList.remove('on'); if (k === heroIdx) { void d.offsetWidth; d.classList.add('on'); } });
+  [...$('bDots').children].forEach((d, k) => d.classList.toggle('on', k === heroIdx));
   if (!colors.has(p.id)) colors.set(p.id, dominant(img));
   setAmbient(colors.get(p.id));
 }
 
-// Ảnh nổi bật của giao diện Album giấy: mờ đi rồi hiện ảnh mới
-async function showFeature(src) {
-  const img = $('featImg');
+// Ảnh nổi bật của giao diện Album giấy và Ô màu: mờ đi rồi hiện ảnh mới
+function showFeature(src) { fadeTo($('featImg'), src); fadeTo($('bFeatImg'), src); }
+async function fadeTo(img, src) {
   if (img.getAttribute('src') === src) return;
   if (img.getAttribute('src') && !reduceMotion) { img.classList.add('fading'); await new Promise(r => setTimeout(r, 350)); }
   img.src = src;
@@ -1099,6 +1510,7 @@ function updateStats() {
   countTo($('pCount'), photos.length);
   countTo($('pFav'), photos.filter(p => p.fav).length);
   countTo($('pAlb'), albums.length);
+  updateBento();
   if (photos.length) {
     const ys = photos.map(p => new Date(when(p)).getFullYear());
     const a = Math.min(...ys), b = Math.max(...ys);
@@ -1121,6 +1533,70 @@ function slideQuery(start) {
   if (curAlbum()) q.set('album', albumId);
   return q.size ? '?' + q : '';
 }
+
+// ---------- Giao diện Ô màu: thống kê, "ngày này năm trước", thanh bên ----------
+const isBento = () => document.documentElement.dataset.theme === 'bento';
+let userName = '', memoPhoto = null;
+function updateBento() {
+  const favs = photos.filter(p => p.fav).length;
+  countTo($('bCount'), photos.length); countTo($('bFav'), favs); countTo($('bAlb'), albums.length);
+  $('bCtAll').textContent = photos.length; $('bCtFav').textContent = favs || '';
+  $('bCtShared').textContent = shared.length || ''; $('bCtAlb').textContent = albums.length || '';
+  // Số ảnh theo tháng, 7 tháng gần nhất
+  const now = new Date(), months = Array(7).fill(0);
+  for (const p of photos) {
+    const d = new Date(when(p)), k = (now.getFullYear() - d.getFullYear()) * 12 + now.getMonth() - d.getMonth();
+    if (k >= 0 && k < 7) months[6 - k]++;
+  }
+  const max = Math.max(...months, 1);
+  $('bSpark').innerHTML = months.map(n => `<i style="height:${Math.round(n / max * 100)}%"></i>`).join('');
+  const week = photos.filter(p => p.added > Date.now() - 7 * 864e5).length;
+  $('bHello').innerHTML = `Chào ${esc(userName || 'bạn')},<br>` + (week ? `tuần này có <span>${week} ảnh mới</span>`
+    : photos.length ? `đang có <span>${photos.length} khoảnh khắc</span>` : `hãy thêm <span>tấm ảnh đầu tiên</span>`);
+  // Ảnh chụp quanh ngày này (±3 ngày) ở những năm trước; không có thì lấy ảnh cũ nhất
+  const dist = d => Math.abs(new Date(now.getFullYear(), d.getMonth(), d.getDate()) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5;
+  const past = photos.filter(p => { const d = new Date(when(p)); return d.getFullYear() < now.getFullYear() && dist(d) <= 3; })
+    .sort((a, b) => dist(new Date(when(a))) - dist(new Date(when(b))));
+  memoPhoto = past[0] || photos.reduce((a, p) => !a || when(p) < when(a) ? p : a, null);
+  $('bMemo').hidden = !memoPhoto;
+  if (memoPhoto) {
+    const y = new Date(when(memoPhoto)).getFullYear();
+    $('bMemoK').textContent = !past.length ? 'Khoảnh khắc đầu tiên' : y === now.getFullYear() - 1 ? 'Ngày này năm trước' : `Ngày này năm ${y}`;
+    $('bMemoT').textContent = cleanName(memoPhoto.name);
+    $('bMemoS').textContent = past.length ? `${past.filter(p => new Date(when(p)).getFullYear() === y).length} ảnh · ${y}` : fmtLong.format(new Date(when(memoPhoto)));
+    const src = memoPhoto.thumb || memoPhoto.url;
+    if ($('bMemoImg').getAttribute('src') !== src) $('bMemoImg').src = src;
+  }
+}
+// Mở một ảnh bất kỳ (ảnh nổi bật, ảnh kỷ niệm): nếu bộ lọc đang ẩn ảnh đó thì về "Tất cả ảnh"
+async function openPhoto(p) {
+  if (!p) return;
+  let i = view.indexOf(p);
+  if (i < 0) {
+    $('q').value = ''; albumId = null;
+    if (mode === 'fav' || isShared()) await setMode('new'); else render();
+    i = view.indexOf(p);
+  }
+  if (i >= 0) openLB(i, document.querySelector(`.card[data-id="${p.id}"] img`));
+}
+function goAll() {
+  if (mode === 'fav' || isShared()) setMode('new');
+  openAlbum(null);
+  if (scrollY > $('gallery').offsetTop) $('gallery').scrollIntoView({ behavior: 'smooth' });
+}
+document.querySelectorAll('.bnav[data-go]').forEach(b => b.onclick = () =>
+  b.dataset.go === 'all' ? goAll() : setMode(b.dataset.go));
+$('bTab').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const go = b.dataset.go;
+  if (go === 'all') goAll();
+  else if (go === 'albums') { if (isShared()) setMode('new'); $('albums').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  else if (go === 'upload') pick();
+  else if (go === 'fav') setMode('fav');
+  else if (go === 'theme') { e.stopPropagation(); toggleThemeMenu($('themeMenu').hidden); }
+});
+$('bFeat').onclick = () => openPhoto(heroList[heroIdx]);
+$('bMemo').onclick = () => openPhoto(memoPhoto);
 
 // ---------- Lưới ảnh ----------
 function computeView() {
@@ -1148,6 +1624,9 @@ function makeCard(p, i) {
   const card = document.createElement('figure');
   card.className = 'card'; card.tabIndex = 0; card.dataset.id = p.id;
   if (p.w && p.h) card.style.setProperty('--ar', (p.w / p.h).toFixed(4));
+  // Kích thước ô trong giao diện Ô màu: yêu thích ô lớn, ảnh ngang 2 cột, ảnh dọc 2 hàng
+  const ar = p.w && p.h ? p.w / p.h : 1;
+  card.classList.add(p.fav && !isShared() ? 'big' : ar > 1.45 ? 'w' : ar < .8 ? 'h' : 'sq');
   if (p.color && !colors.has(p.id)) colors.set(p.id, p.color);
   if (colors.get(p.id)) card.style.setProperty('--c', colors.get(p.id));
   card.innerHTML = `
@@ -1175,6 +1654,7 @@ function makeCard(p, i) {
   const tilt = card.querySelector('.tilt');
   card.addEventListener('pointermove', e => {
     if (e.pointerType !== 'mouse') return;
+    if (isBento()) { card.classList.add('hover'); return; } // Ô màu không nghiêng 3D: khỏi tính lại style mỗi lần rê chuột
     const r = card.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
     tilt.style.setProperty('--ry', ((x - .5) * 14).toFixed(2) + 'deg');
     tilt.style.setProperty('--rx', ((.5 - y) * 14).toFixed(2) + 'deg');
@@ -1211,12 +1691,12 @@ function render() {
     : 'Kéo thả ảnh vào đây, dán bằng Ctrl+V, hoặc chọn từ máy.';
   $('emptyUpload').hidden = !none || isShared();
 
-  // Sắp theo thời gian thì chia nhóm theo năm
-  const groups = [];
+  // Sắp theo thời gian thì chia nhóm theo năm (giao diện Ô màu: theo tháng)
+  const groups = [], byMonth = isBento();
   if (mode === 'new' || mode === 'old' || isShared()) {
     for (const p of view) {
-      const y = new Date(when(p)).getFullYear();
-      if (!groups.length || groups.at(-1).year !== y) groups.push({ year: y, items: [] });
+      const d = new Date(when(p)), y = d.getFullYear(), key = byMonth ? y * 12 + d.getMonth() : y;
+      if (!groups.length || groups.at(-1).key !== key) groups.push({ key, year: y, month: d.getMonth(), items: [] });
       groups.at(-1).items.push(p);
     }
   } else if (view.length) groups.push({ items: view });
@@ -1224,7 +1704,10 @@ function render() {
   let i = 0;
   for (const g of groups) {
     const sec = document.createElement('section'); sec.className = 'year';
-    if (g.year) {
+    if (g.year && byMonth) {
+      sec.innerHTML = `<div class="year-head"><h2 class="year-num">Tháng ${g.month + 1}</h2>
+        <div class="year-meta"><b>${g.year}</b><span>${g.items.length} ảnh</span></div></div>`;
+    } else if (g.year) {
       const first = new Date(when(g.items.at(-1))), last = new Date(when(g.items[0]));
       const months = [first, last].sort((a, b) => a - b).map(d => 'Tháng ' + (d.getMonth() + 1));
       sec.innerHTML = `<div class="year-head"><h2 class="year-num">${g.year}</h2>
@@ -1243,16 +1726,16 @@ function movePill() {
   pill.style.width = on.offsetWidth + 'px';
   pill.style.transform = `translateX(${on.offsetLeft}px)`;
 }
-$('seg').addEventListener('click', async e => {
-  const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.mode === 'fav' && !photos.some(p => p.fav)) { toast('Chưa có ảnh yêu thích — bấm ★ trên ảnh để thêm'); return; }
-  $('seg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+async function setMode(m) {
+  if (m === 'fav' && !photos.some(p => p.fav)) { toast('Chưa có ảnh yêu thích — bấm ★ trên ảnh để thêm'); return; }
+  $('seg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.mode === m));
   const wasShared = isShared();
-  mode = b.dataset.mode; movePill();
+  mode = m; movePill();
   if (wasShared !== isShared()) selected.clear(); // ảnh của mình và ảnh chung là hai danh sách khác nhau
   if (isShared()) await loadShared();
   render();
-});
+}
+$('seg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.mode); });
 addEventListener('resize', movePill);
 document.fonts?.ready.then(movePill);
 $('q').oninput = render;
@@ -1341,7 +1824,7 @@ async function addFiles(files) {
 }
 
 const pick = () => $('file').click();
-$('navUpload').onclick = $('heroUpload').onclick = $('featUpload').onclick = $('emptyUpload').onclick = pick;
+$('navUpload').onclick = $('heroUpload').onclick = $('featUpload').onclick = $('bUpload').onclick = $('emptyUpload').onclick = pick;
 $('file').onchange = () => { addFiles($('file').files); $('file').value = ''; };
 
 let dragDepth = 0;
@@ -1450,6 +1933,7 @@ async function loadAlbums() {
 }
 
 function renderAlbums() {
+  renderSide();
   const box = $('albums');
   box.hidden = isShared();
   $('albumHead').hidden = !curAlbum();
@@ -1468,6 +1952,24 @@ function renderAlbums() {
     $('albumName').textContent = album.name;
     $('albumCount').textContent = album.photoIds.length + ' ảnh';
   }
+}
+// Thanh bên của giao diện Ô màu: mục đang xem và danh sách album (mỗi album một chấm màu)
+const dotColors = ['var(--orange)', 'var(--pink)', 'var(--gold)', 'var(--teal)', 'var(--violet)', 'var(--lime)'];
+function renderSide() {
+  const at = isShared() ? 'shared' : mode === 'fav' ? 'fav' : albumId ? 'album' : 'all';
+  document.querySelectorAll('.bnav[data-go]').forEach(b => b.classList.toggle('on', b.dataset.go === at));
+  $('bTab').querySelectorAll('[data-go]').forEach(b => b.classList.toggle('on', b.dataset.go === (at === 'album' ? 'albums' : at)));
+  const box = $('bAlbums');
+  box.innerHTML = albums.map((a, i) => `<button class="bnav balb ${!isShared() && mode !== 'fav' && a.id === albumId ? 'on' : ''}" style="--dot:${dotColors[i % dotColors.length]}">
+      <i style="${a.coverThumb || a.coverUrl ? `background-image:url('${esc(a.coverThumb || a.coverUrl)}')` : ''}"></i><b>${esc(a.name)}</b><span class="ct">${a.photoIds.length}</span></button>`).join('')
+    + `<button class="bnav balb new"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></i>Album mới</button>`;
+  const btns = [...box.children];
+  albums.forEach((a, i) => btns[i].onclick = async () => {
+    if (mode === 'fav' || isShared()) await setMode('new');
+    openAlbum(a.id);
+    if (scrollY > $('gallery').offsetTop) $('gallery').scrollIntoView({ behavior: 'smooth' });
+  });
+  btns.at(-1).onclick = createAlbum;
 }
 function openAlbum(id) {
   if (id === albumId) return;
@@ -1771,12 +2273,15 @@ addEventListener('scroll', () => {
   });
 }, { passive: true });
 
-// ---------- Giao diện: Điện ảnh / Album giấy (nhớ trong trình duyệt) ----------
+// ---------- Giao diện: Điện ảnh / Album giấy / Ô màu (nhớ trong trình duyệt) ----------
 function applyTheme(t) {
+  const changed = document.documentElement.dataset.theme !== t;
+  if (t === 'bento') loadBentoFont();
   document.documentElement.dataset.theme = t;
-  document.querySelector('meta[name="theme-color"]').content = t === 'paper' ? '#f4efe6' : '#07070a';
+  document.querySelector('meta[name="theme-color"]').content = { paper: '#f4efe6', bento: '#eceff5' }[t] || '#07070a';
   $('themeMenu').querySelectorAll('.opt').forEach(o => o.setAttribute('aria-checked', o.dataset.theme === t));
   movePill();
+  if (changed && photos.length) render(); // Ô màu chia nhóm theo tháng, hai giao diện kia theo năm
 }
 function toggleThemeMenu(open) {
   $('themeMenu').hidden = !open;
@@ -1791,7 +2296,7 @@ $('themeMenu').addEventListener('click', e => {
 addEventListener('click', e => { if (!$('themePick').contains(e.target)) toggleThemeMenu(false); });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('themeMenu').hidden) { toggleThemeMenu(false); $('themeBtn').focus(); } });
 applyTheme(document.documentElement.dataset.theme);
-$('navDate').textContent = new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+$('navDate').textContent = $('bDate').textContent = new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
 
 // ---------- Init ----------
 async function loadShared() {
@@ -1822,7 +2327,7 @@ async function checkImport(waiting = false) {
     } else if (waiting || st.added) load();
   } catch {}
 }
-fetch('/api/status').then(r => r.json()).then(s => { if (s.user) $('navUserName').textContent = s.user.username; }).catch(() => {});
+fetch('/api/status').then(r => r.json()).then(s => { if (s.user) { $('navUserName').textContent = userName = s.user.username; updateBento(); } }).catch(() => {});
 // Quay lại tab thì tải lại danh sách, để thấy ảnh mới thêm từ thiết bị khác
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !uploading) load().then(() => checkImport());

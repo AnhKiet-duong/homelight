@@ -64,7 +64,7 @@ Gallery được thiết kế để chạy trên máy tính ở nhà với mạn
 - Album: tạo album, chọn nhiều ảnh rồi **Thêm vào album**, chọn ảnh bìa, đổi tên, trình chiếu riêng từng album. Album chỉ lưu danh sách ảnh nên một ảnh có thể nằm trong nhiều album, và xoá album không làm mất ảnh
 - Tải ảnh bằng nút bấm, kéo thả hoặc dán (Ctrl+V); tự đọc ngày chụp từ EXIF
 - Lưới ảnh chia theo năm, nghiêng 3D khi rê chuột, màu ánh sáng lấy từ ảnh
-- Hai giao diện, đổi bằng nút **Giao diện** trên thanh trên cùng: **Điện ảnh** (nền tối, nghiêng 3D) và **Album giấy** (nền giấy sáng, khung ảnh trắng, chữ kiểu tạp chí). Lựa chọn được nhớ trong trình duyệt
+- Ba giao diện, đổi bằng nút **Giao diện** trên thanh trên cùng: **Điện ảnh** (nền tối, nghiêng 3D), **Album giấy** (nền giấy sáng, khung ảnh trắng, chữ kiểu tạp chí) và **Ô màu** (lưới ô bo tròn, thanh bên album, ô "Ngày này năm trước"; trên điện thoại có thanh điều hướng dưới đáy). Lựa chọn được nhớ trong trình duyệt
 - Yêu thích, tìm kiếm, sắp xếp, xem phóng to, tải xuống, xoá
 - Trình chiếu (`/slideshow.html`): băng chuyền 3D, Ken Burns, nhạc nền, toàn màn hình, phím tắt
 
