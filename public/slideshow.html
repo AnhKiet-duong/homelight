@@ -747,7 +747,9 @@ $('startBtn').onclick = start;
     if (res.status === 401) { location.href = '/login.html?next=' + encodeURIComponent(location.pathname + location.search); return; }
     if (!res.ok) throw new Error();
     // Trình chiếu dùng ảnh vừa màn hình (preview), nhẹ hơn ảnh gốc nhiều lần
-    all = (await res.json()).map(p => ({ ...p, url: p.preview || p.url }));
+    // Điện thoại dùng cỡ 1080px (?s=ph), nhẹ bằng khoảng một nửa cỡ 1920px
+    const phone = Math.min(screen.width, screen.height) <= 600;
+    all = (await res.json()).map(p => ({ ...p, url: (phone && p.preview ? p.preview.replace(/\?s=md$/, '?s=ph') : p.preview) || p.url }));
     // Trình chiếu một album: ?album=<id>
     if (params.get('album')) {
       const album = (await (await fetch('/api/albums')).json()).find(a => a.id === params.get('album'));

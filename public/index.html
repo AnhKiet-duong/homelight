@@ -946,12 +946,20 @@ const $ = id => document.getElementById(id);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---------- API (ảnh lưu trên server, xem server.js) ----------
+// Điện thoại xem phóng to bằng ảnh 1080px (?s=ph) thay vì 1920px (?s=md): nhẹ bằng khoảng một nửa
+const PHONE = Math.min(screen.width, screen.height) <= 600;
+function forScreen(data) {
+  if (PHONE) for (const p of Array.isArray(data) ? data : [data]) {
+    if (p && typeof p.preview === 'string') p.preview = p.preview.replace(/\?s=md$/, '?s=ph');
+  }
+  return data;
+}
 async function api(method, path, body, headers = {}) {
   const res = await fetch('/api/photos' + path, { method, body, headers });
   if (res.status === 401) { location.href = '/login.html?next=/'; throw new Error('Cần đăng nhập'); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Lỗi ${res.status}`);
-  return data;
+  return forScreen(data);
 }
 
 async function getJson(url) {
@@ -959,7 +967,7 @@ async function getJson(url) {
   if (res.status === 401) { location.href = '/login.html?next=/'; throw new Error('Cần đăng nhập'); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Lỗi ${res.status}`);
-  return data;
+  return forScreen(data);
 }
 
 // ---------- State ----------

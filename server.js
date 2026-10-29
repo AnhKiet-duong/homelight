@@ -148,7 +148,7 @@ function makeThumbs(uid, photo, urgent) {
 function dropThumbs(uid, photo) {
   return Promise.all(Object.keys(media.SIZES).map(s => fsp.unlink(media.variantPath(thumbsDir(uid), photo.id, s)).catch(() => {})));
 }
-// ?s=sm|md: gửi ảnh nhỏ, chưa có thì tạo ngay; không tạo được thì gửi ảnh gốc
+// ?s=sm|ph|md: gửi ảnh nhỏ, chưa có thì tạo ngay; không tạo được thì gửi ảnh gốc
 async function serveVariant(res, uid, photo, size, cache) {
   const file = media.variantPath(thumbsDir(uid), photo.id, size);
   const exists = () => fsp.access(file).then(() => true, () => false);
@@ -251,19 +251,40 @@ function isLocalRequest(req) {
 // ---------- Helpers ----------
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
-// Trình duyệt nhận gzip không (nén chữ/JSON nhỏ đi 4–8 lần, rất có ích khi mạng chậm)
-const acceptsGzip = req => /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+// Nén chữ/JSON (nhỏ đi 4–8 lần, rất có ích khi mạng chậm): ưu tiên brotli (nhỏ hơn gzip ~15%), không có thì gzip
+function pickEncoding(req) {
+  const ae = req.headers['accept-encoding'] || '';
+  return /\bbr\b/.test(ae) ? 'br' : /\bgzip\b/.test(ae) ? 'gzip' : null;
+}
+// max: nén kỹ nhất, dùng cho trang web (chỉ nén một lần rồi giữ lại); còn lại nén nhanh cho dữ liệu đổi liên tục
+function compress(data, enc, max = false) {
+  if (enc === 'gzip') return zlib.gzipSync(data, { level: max ? 9 : 6 });
+  const { BROTLI_PARAM_QUALITY, BROTLI_PARAM_SIZE_HINT } = zlib.constants;
+  return zlib.brotliCompressSync(data, { params: { [BROTLI_PARAM_QUALITY]: max ? 11 : 5, [BROTLI_PARAM_SIZE_HINT]: data.length } });
+}
+const notModified = (req, etag) => req.headers['if-none-match'] === etag;
 
 function send(res, status, body, headers = {}) {
+  const req = res.req;
   const isJson = typeof body !== 'string' && !Buffer.isBuffer(body);
   let data = isJson ? JSON.stringify(body) : body;
-  const zip = data.length > 1024 && acceptsGzip(res.req);
-  if (zip) data = zlib.gzipSync(data);
+  // Dữ liệu GET (danh sách ảnh, album…): trình duyệt giữ lại và hỏi lại kèm ETag,
+  // chưa đổi thì chỉ trả 304 thay vì gửi lại cả danh sách (vd. mỗi lần quay lại tab)
+  const revalidate = status === 200 && isJson && req.method === 'GET' && !headers['Set-Cookie'];
+  const etag = revalidate ? `W/"${crypto.createHash('sha1').update(data).digest('base64url')}"` : null;
+  const cache = revalidate ? 'private, no-cache' : 'no-store';
+  if (etag && notModified(req, etag)) {
+    res.writeHead(304, { ETag: etag, 'Cache-Control': cache, Vary: 'Accept-Encoding' });
+    return res.end();
+  }
+  const enc = data.length > 1024 ? pickEncoding(req) : null;
+  if (enc) data = compress(Buffer.from(data), enc);
   res.writeHead(status, {
     'Content-Type': isJson ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8',
     'X-Content-Type-Options': 'nosniff',
-    'Cache-Control': 'no-store',
-    ...(zip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : {}),
+    'Cache-Control': cache,
+    ...(etag ? { ETag: etag } : {}),
+    ...(enc ? { 'Content-Encoding': enc, Vary: 'Accept-Encoding' } : {}),
     ...headers,
   });
   res.end(data);
@@ -295,28 +316,39 @@ function decodeHeader(v, fallback = '') {
   try { return v ? decodeURIComponent(v) : fallback; } catch { return fallback; }
 }
 
+// Trang web đã nén, giữ trong RAM theo ETag -> mỗi phiên bản chỉ nén một lần (nén kỹ nhất), không nén lại mỗi lượt tải
+const packed = new Map();
+async function packText(file, etag, enc) {
+  const key = enc + ':' + file, hit = packed.get(key);
+  if (hit && hit.etag === etag) return hit.data;
+  const data = compress(await fsp.readFile(file), enc, true);
+  packed.set(key, { etag, data });
+  return data;
+}
+
 async function serveFile(res, file, cache) {
   try {
     const stat = await fsp.stat(file);
     if (!stat.isFile()) throw new Error();
     const type = STATIC_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
-    // Trang web: hỏi lại server mỗi lần nhưng chưa đổi thì chỉ trả 304 (không tải lại), có đổi thì gửi bản nén
     const isText = /^text\/|json|svg/.test(type);
+    // Mọi file đều có ETag: hết hạn cache thì trình duyệt hỏi lại, file chưa đổi thì chỉ nhận 304 (không tải lại)
     const etag = `W/"${stat.size}-${Math.round(stat.mtimeMs)}"`;
-    if (isText && res.req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag, 'Cache-Control': cache }); return res.end(); }
-    const zip = isText && acceptsGzip(res.req);
+    const common = { ETag: etag, 'Cache-Control': cache, ...(isText ? { Vary: 'Accept-Encoding' } : {}) };
+    if (notModified(res.req, etag)) { res.writeHead(304, common); return res.end(); }
+    const enc = isText ? pickEncoding(res.req) : null;
+    const body = enc ? await packText(file, etag, enc) : null;
     res.writeHead(200, {
       'Content-Type': type,
-      ...(zip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : { 'Content-Length': stat.size }),
-      ...(isText ? { ETag: etag } : {}),
-      'Cache-Control': cache,
+      'Content-Length': body ? body.length : stat.size,
+      ...(enc ? { 'Content-Encoding': enc } : {}),
+      ...common,
       'X-Content-Type-Options': 'nosniff',
     });
     if (res.req.method === 'HEAD') return res.end();
-    const stream = fs.createReadStream(file);
-    zip ? stream.pipe(zlib.createGzip()).pipe(res) : stream.pipe(res);
+    body ? res.end(body) : fs.createReadStream(file).pipe(res);
   } catch {
-    send(res, 404, 'Không tìm thấy');
+    if (!res.headersSent) send(res, 404, 'Không tìm thấy');
   }
 }
 
@@ -790,7 +822,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 401, 'Cần đăng nhập');
     }
 
-    // ?s=sm (ảnh trong lưới) / ?s=md (xem phóng to) -> ảnh nhỏ WebP, không có ?s là ảnh gốc
+    // ?s=sm (ảnh trong lưới) / ?s=ph, ?s=md (xem phóng to trên điện thoại / máy tính) -> ảnh nhỏ WebP, không có ?s là ảnh gốc
     const size = Object.hasOwn(media.SIZES, url.searchParams.get('s')) ? url.searchParams.get('s') : null;
 
     if (url.pathname.startsWith('/uploads/')) {
@@ -853,6 +885,7 @@ server.listen(PORT, '0.0.0.0', () => {
 
   setTimeout(scanImports, 1000);
   setInterval(scanImports, IMPORT_SCAN_MS).unref();
-  // Tạo dần ảnh nhỏ cho các ảnh cũ chưa có
-  if (media.hasSharp) for (const u of users) for (const p of getPhotos(u.id)) if (!p.color) makeThumbs(u.id, p);
+  // Tạo dần ảnh nhỏ cho các ảnh cũ chưa có (kể cả ảnh chỉ thiếu một cỡ mới thêm)
+  const missing = (uid, p) => Object.keys(media.SIZES).some(s => !fs.existsSync(media.variantPath(thumbsDir(uid), p.id, s)));
+  if (media.hasSharp) for (const u of users) for (const p of getPhotos(u.id)) if (!p.color || missing(u.id, p)) makeThumbs(u.id, p);
 });
