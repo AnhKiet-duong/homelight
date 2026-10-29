@@ -11,9 +11,11 @@ try {
   sharp.concurrency(1);    // mỗi ảnh 1 luồng, để server vẫn nhanh khi đang tạo ảnh nhỏ
 } catch { /* chưa cài sharp */ }
 
-// sm: ảnh trong lưới (~40 KB), md: ảnh xem phóng to (~250 KB). Ảnh gốc chỉ tải khi bấm "Ảnh gốc" hoặc tải xuống.
+// sm: ảnh trong lưới (~40 KB), ph: xem phóng to trên điện thoại (~100 KB), md: xem phóng to trên máy tính (~250 KB).
+// Ảnh gốc chỉ tải khi bấm "Ảnh gốc" hoặc tải xuống.
 const SIZES = {
   sm: { w: 600, h: 1500, q: 70 },
+  ph: { w: 1080, h: 1920, q: 76 },
   md: { w: 1920, h: 1920, q: 78 },
 };
 
@@ -73,12 +75,13 @@ async function imageSize(file) {
 
 const variantPath = (dir, id, size) => path.join(dir, `${id}-${size}.webp`);
 
-// Tạo ảnh sm + md (WebP); trả về màu trung bình "r g b" (làm nền lúc ảnh đang tải) và kích thước ảnh gốc
+// Tạo các cỡ ảnh còn thiếu (WebP); trả về màu trung bình "r g b" (làm nền lúc ảnh đang tải) và kích thước ảnh gốc
 async function makeVariants(src, dir, id) {
   await fsp.mkdir(dir, { recursive: true });
   const base = sharp(src, { animated: false, limitInputPixels: 300e6 }).rotate(); // xoay theo EXIF
   for (const [size, s] of Object.entries(SIZES)) {
     const out = variantPath(dir, id, size);
+    if (await fsp.access(out).then(() => true, () => false)) continue; // đã có (vd. ảnh cũ chỉ thiếu cỡ mới thêm)
     await base.clone().resize(s.w, s.h, { fit: 'inside', withoutEnlargement: true })
       .webp({ quality: s.q, effort: 4 }).toFile(out + '.tmp');
     await fsp.rename(out + '.tmp', out);
