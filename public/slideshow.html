@@ -748,7 +748,9 @@ $('startBtn').onclick = start;
     if (!res.ok) throw new Error();
     // Trình chiếu dùng ảnh vừa màn hình (preview), nhẹ hơn ảnh gốc nhiều lần
     // Điện thoại dùng cỡ 1080px (?s=ph), nhẹ bằng khoảng một nửa cỡ 1920px
-    const phone = Math.min(screen.width, screen.height) <= 600;
+    let saver = !!navigator.connection?.saveData; // "Tiết kiệm dữ liệu" bật ở trang gallery -> cũng dùng cỡ 1080px
+    try { const v = localStorage.getItem('data-saver'); if (v !== null) saver = v === '1'; } catch {}
+    const phone = Math.min(screen.width, screen.height) <= 600 || saver;
     all = (await res.json()).map(p => ({ ...p, url: (phone && p.preview ? p.preview.replace(/\?s=md$/, '?s=ph') : p.preview) || p.url }));
     // Trình chiếu một album: ?album=<id>
     if (params.get('album')) {

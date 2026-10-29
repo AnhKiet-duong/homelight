@@ -48,6 +48,17 @@ tailscale funnel status     # xem địa chỉ đang công khai
 tailscale funnel reset      # tắt công khai
 ```
 
+### Đổi cổng gallery
+
+Các lệnh trên dùng cổng mặc định `3000`. Nếu đã đổi cổng trong **Tài khoản → Cổng máy chủ** (ví dụ sang `8080`), Funnel vẫn trỏ về cổng cũ nên link công khai sẽ báo lỗi. Chạy lại trên laptop:
+
+```powershell
+tailscale funnel reset
+tailscale funnel --bg 8080
+```
+
+Đổi cổng trong lúc đang mở gallery qua link Funnel thì link đó mất kết nối ngay, cho tới khi chạy lệnh trên. Nên đổi cổng ngay trên laptop (`http://localhost:...`). Cloudflare Tunnel / ngrok cũng vậy: sửa số cổng trong lệnh chạy.
+
 ## 4. Giữ laptop luôn sẵn sàng (tuỳ chọn)
 
 - **Không cho máy ngủ:** Settings → System → Power → Screen and sleep → "When plugged in, put my device to sleep after" → **Never**.

@@ -11,6 +11,12 @@ try {
   sharp.concurrency(1);    // mỗi ảnh 1 luồng, để server vẫn nhanh khi đang tạo ảnh nhỏ
 } catch { /* chưa cài sharp */ }
 
+// Ảnh HEIC của iPhone: trình duyệt (trừ Safari) không mở được, và sharp cài từ npm không có bộ giải mã HEVC
+// (vướng bản quyền). heic-decode giải mã bằng JavaScript (chậm hơn, ~1–2 giây một ảnh 12 MP) rồi sharp làm ảnh nhỏ WebP.
+// Chỉ cần làm một lần cho mỗi ảnh; xem thì dùng ảnh nhỏ, tải xuống vẫn là file HEIC gốc.
+let heicDecode = null;
+try { heicDecode = require('heic-decode'); } catch { /* chưa cài heic-decode */ }
+
 // sm: ảnh trong lưới (~40 KB), ph: xem phóng to trên điện thoại (~100 KB), md: xem phóng to trên máy tính (~250 KB).
 // Ảnh gốc chỉ tải khi bấm "Ảnh gốc" hoặc tải xuống.
 const SIZES = {
@@ -27,46 +33,69 @@ function sniffType(buf) {
   if (buf.toString('latin1', 0, 4) === 'GIF8') return 'image/gif';
   if (buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP') return 'image/webp';
   if (buf.toString('latin1', 4, 8) === 'ftyp' && /^avi[fs]$/.test(buf.toString('latin1', 8, 12))) return 'image/avif';
+  if (buf.toString('latin1', 4, 8) === 'ftyp') {
+    // HEIC (iPhone): nhãn chính heic/heix, hoặc mif1 kèm heic trong danh sách nhãn tương thích
+    const end = Math.min(buf.readUInt32BE(0), buf.length), brands = [buf.toString('latin1', 8, 12)];
+    for (let o = 16; o + 4 <= end; o += 4) brands.push(buf.toString('latin1', o, o + 4));
+    if (/^(heic|heix|heim|heis|hevc|hevx)$/.test(brands[0]) || (brands[0] === 'mif1' && brands.some(b => /^(heic|heix)$/.test(b)))) return 'image/heic';
+  }
   if (buf[0] === 0x42 && buf[1] === 0x4D) return 'image/bmp';
   return null;
 }
 
-// Đọc ngày chụp (EXIF DateTimeOriginal) từ ảnh JPEG — giống exifDate() trong index.html
+// Đọc ngày chụp (EXIF DateTimeOriginal) từ ảnh JPEG — giống exifDate() trong index.html — hoặc từ khối EXIF của HEIC
 function exifDate(buf) {
   try {
+    if (buf.toString('latin1', 0, 4) === 'Exif') return tiffDate(buf, 6); // khối EXIF riêng (vd. lấy từ HEIC)
     if (buf.readUInt16BE(0) !== 0xFFD8) return null;
     let off = 2;
     while (off + 4 < buf.length) {
       const marker = buf.readUInt16BE(off), len = buf.readUInt16BE(off + 2);
-      if (marker === 0xFFE1 && buf.readUInt32BE(off + 4) === 0x45786966) { // "Exif"
-        const tiff = off + 10, le = buf.readUInt16BE(tiff) === 0x4949;
-        const u16 = o => le ? buf.readUInt16LE(o) : buf.readUInt16BE(o);
-        const u32 = o => le ? buf.readUInt32LE(o) : buf.readUInt32BE(o);
-        const findTag = (ifd, tag) => {
-          const n = u16(ifd);
-          for (let i = 0; i < n; i++) if (u16(ifd + 2 + i * 12) === tag) return ifd + 2 + i * 12;
-          return -1;
-        };
-        const exifPtr = findTag(tiff + u32(tiff + 4), 0x8769);
-        if (exifPtr < 0) return null;
-        const dt = findTag(tiff + u32(exifPtr + 8), 0x9003);
-        if (dt < 0) return null;
-        const start = tiff + u32(dt + 8);
-        const m = buf.toString('latin1', start, start + 19).match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
-        if (!m || m[1] === '0000') return null;
-        return new Date(m[1], m[2] - 1, m[3], m[4], m[5], m[6]).getTime() || null;
-      }
+      if (marker === 0xFFE1 && buf.readUInt32BE(off + 4) === 0x45786966) return tiffDate(buf, off + 10); // "Exif"
       if ((marker & 0xFF00) !== 0xFF00 || marker === 0xFFDA) break;
       off += 2 + len;
     }
   } catch { /* EXIF hỏng */ }
   return null;
 }
+function tiffDate(buf, tiff) {
+  try {
+    const le = buf.readUInt16BE(tiff) === 0x4949;
+    const u16 = o => le ? buf.readUInt16LE(o) : buf.readUInt16BE(o);
+    const u32 = o => le ? buf.readUInt32LE(o) : buf.readUInt32BE(o);
+    const findTag = (ifd, tag) => {
+      const n = u16(ifd);
+      for (let i = 0; i < n; i++) if (u16(ifd + 2 + i * 12) === tag) return ifd + 2 + i * 12;
+      return -1;
+    };
+    const exifPtr = findTag(tiff + u32(tiff + 4), 0x8769);
+    if (exifPtr < 0) return null;
+    const dt = findTag(tiff + u32(exifPtr + 8), 0x9003);
+    if (dt < 0) return null;
+    const start = tiff + u32(dt + 8);
+    const m = buf.toString('latin1', start, start + 19).match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+    if (!m || m[1] === '0000') return null;
+    return new Date(m[1], m[2] - 1, m[3], m[4], m[5], m[6]).getTime() || null;
+  } catch { /* EXIF hỏng */ }
+  return null;
+}
+
+// Ngày chụp của ảnh HEIC: sharp đọc được khối EXIF (dù không giải mã được ảnh)
+async function heicDate(file) {
+  if (!sharp) return null;
+  try { const { exif } = await sharp(file).metadata(); return exif ? exifDate(exif) : null; } catch { return null; }
+}
+const isHeic = async file => sniffType(await readStart(file)) === 'image/heic';
+async function readStart(file) {
+  const fh = await fsp.open(file, 'r');
+  try { const buf = Buffer.alloc(512); const { bytesRead } = await fh.read(buf, 0, 512, 0); return buf.subarray(0, bytesRead); } finally { await fh.close(); }
+}
 
 // Kích thước hiển thị (đã xoay theo EXIF) — cần sharp
 async function imageSize(file) {
   if (!sharp) return { w: 0, h: 0 };
   try {
+    if (await isHeic(file)) return { w: 0, h: 0 }; // biết chính xác khi giải mã lúc tạo ảnh nhỏ (iPhone xoay ảnh bằng hộp irot, không phải EXIF)
     const m = await sharp(file).metadata();
     const swap = (m.orientation || 1) >= 5;
     return { w: (swap ? m.height : m.width) || 0, h: (swap ? m.width : m.height) || 0 };
@@ -78,7 +107,14 @@ const variantPath = (dir, id, size) => path.join(dir, `${id}-${size}.webp`);
 // Tạo các cỡ ảnh còn thiếu (WebP); trả về màu trung bình "r g b" (làm nền lúc ảnh đang tải) và kích thước ảnh gốc
 async function makeVariants(src, dir, id) {
   await fsp.mkdir(dir, { recursive: true });
-  const base = sharp(src, { animated: false, limitInputPixels: 300e6 }).rotate(); // xoay theo EXIF
+  let base, size = null;
+  if (await isHeic(src)) {
+    if (!heicDecode) throw new Error('cần cài heic-decode để xem ảnh HEIC (npm install)');
+    // libheif đã xoay ảnh đúng chiều khi giải mã -> không xoay theo EXIF nữa
+    const { width, height, data } = await heicDecode({ buffer: await fsp.readFile(src) });
+    base = sharp(Buffer.from(data.buffer, data.byteOffset, data.byteLength), { raw: { width, height, channels: 4 } });
+    size = { w: width, h: height };
+  } else base = sharp(src, { animated: false, limitInputPixels: 300e6 }).rotate(); // xoay theo EXIF
   for (const [size, s] of Object.entries(SIZES)) {
     const out = variantPath(dir, id, size);
     if (await fsp.access(out).then(() => true, () => false)) continue; // đã có (vd. ảnh cũ chỉ thiếu cỡ mới thêm)
@@ -87,7 +123,7 @@ async function makeVariants(src, dir, id) {
     await fsp.rename(out + '.tmp', out);
   }
   const { channels } = await sharp(variantPath(dir, id, 'sm')).stats();
-  return { color: channels.slice(0, 3).map(c => Math.round(c.mean)).join(' '), ...await imageSize(src) };
+  return { color: channels.slice(0, 3).map(c => Math.round(c.mean)).join(' '), ...(size || await imageSize(src)) };
 }
 
 // Hàng đợi: tạo tối đa 2 ảnh cùng lúc, cùng một ảnh thì chỉ tạo một lần.
@@ -120,4 +156,4 @@ function pump() {
   }
 }
 
-module.exports = { hasSharp: !!sharp, SIZES, sniffType, exifDate, imageSize, variantPath, queueVariants };
+module.exports = { hasSharp: !!sharp, hasHeic: !!(sharp && heicDecode), SIZES, sniffType, exifDate, heicDate, imageSize, variantPath, queueVariants };

@@ -2,7 +2,7 @@
   "name": "my-gallery",
   "version": "1.0.0",
   "private": true,
-  "description": "Gallery ảnh tự host. Chạy được ngay với Node.js; cài thêm sharp (npm install) để có ảnh nhỏ cho mạng chậm",
+  "description": "Gallery ảnh và video tự host. Chạy được ngay với Node.js; cài thêm sharp (npm install) để có ảnh nhỏ và ffmpeg để video xem mượt khi mạng chậm",
   "scripts": {
     "start": "node server.js"
   },
@@ -10,6 +10,7 @@
     "node": ">=18"
   },
   "optionalDependencies": {
+    "heic-decode": "^2.1.0",
     "sharp": "^0.35.5"
   }
 }

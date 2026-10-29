@@ -105,6 +105,32 @@
   .user .acts { display: flex; flex-wrap: wrap; gap: 8px; }
   .reset { display: flex; gap: 8px; flex: 1 1 100%; }
   .reset input { height: 34px; max-width: 260px; }
+  /* Ổ cứng ngoài / thư mục liên kết */
+  .check { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0 0; font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--muted); cursor: pointer; }
+  .check input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; accent-color: var(--gold); }
+  .browser { margin-top: 14px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: rgba(0,0,0,.25); }
+  .browser .bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .browser .bar code { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  .browser ul { list-style: none; margin: 0; padding: 6px; max-height: 280px; overflow: auto; }
+  .browser li button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 0; border-radius: 10px; background: none; text-align: left; font-size: 14px; }
+  .browser li button:hover { background: var(--surface-2); }
+  .browser li.empty { padding: 12px; color: var(--faint); font-size: 13px; }
+  .browser svg { color: var(--gold); }
+  .links { margin-top: 22px; border-top: 1px solid var(--line); }
+  .links:empty { display: none; }
+  .link { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .link .who { flex: 1 1 260px; min-width: 0; }
+  .link .who b { font-weight: 500; }
+  .link .who small { display: block; color: var(--faint); font-size: 12px; word-break: break-all; }
+  .link .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .dot { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 12px; color: var(--muted); }
+  .dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+  .dot.on::before { background: var(--ok); }
+  .dot.busy::before { background: var(--gold); animation: blink 1s infinite alternate; }
+  @keyframes blink { to { opacity: .3; } }
+  /* Cổng máy chủ */
+  .hint { margin: 14px 0 0; font-size: 13px; color: var(--faint); }
+  .hint code, .panel > p code { padding: 1px 7px; border-radius: 6px; background: var(--surface-2); color: var(--text); font-size: 12.5px; }
   @media (max-width: 520px) {
     .nav { gap: 8px; }
     .brand b { display: none; }
@@ -165,6 +191,40 @@
     </form>
     <p class="msg" id="addMsg" role="status"></p>
     <div class="users" id="users"></div>
+  </section>
+
+  <section class="panel" id="serverPanel" hidden>
+    <h2>Cổng máy chủ</h2>
+    <p>Gallery đang chạy ở cổng <code id="portNow"></code>. Đổi cổng thì server mở cổng mới ngay, không cần chạy lại, và nhớ cổng này cho những lần sau. Trang này sẽ tự chuyển sang địa chỉ mới.</p>
+    <form class="row" id="portForm" novalidate>
+      <div class="field" style="flex:0 1 200px"><label for="portInput">Cổng mới</label><input id="portInput" type="number" inputmode="numeric" min="1024" max="65535" placeholder="1024 – 65535"></div>
+      <button class="btn light" type="submit">Đổi cổng</button>
+    </form>
+    <p class="msg" id="portMsg" role="status"></p>
+    <p class="hint" id="portHint"></p>
+  </section>
+
+  <section class="panel" id="drives" hidden>
+    <h2>Ổ cứng ngoài</h2>
+    <p id="drivesIntro">Trỏ tới một thư mục trên ổ cứng ngoài (hoặc bất kỳ ổ nào của máy chủ): ảnh và video trong đó hiện luôn trong gallery mà không bị chép vào máy. File gốc không bao giờ bị sửa hay xoá. Rút ổ ra thì các ảnh đó tạm ẩn, cắm lại là hiện lại.</p>
+    <form id="linkForm" novalidate>
+      <div class="row" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div class="field" style="flex:2 1 280px"><label for="linkPath">Thư mục</label><input id="linkPath" autocomplete="off" spellcheck="false" placeholder="vd: E:\Anh gia dinh"></div>
+        <button class="btn" type="button" id="browseBtn">Chọn thư mục…</button>
+      </div>
+      <div class="browser" id="browser" hidden>
+        <div class="bar"><button class="btn small" type="button" id="brUp">Lên</button><code id="brPath"></code><button class="btn small light" type="button" id="brPick">Chọn thư mục này</button></div>
+        <ul id="brList"></ul>
+      </div>
+      <div class="row" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-top:12px">
+        <div class="field" style="flex:1 1 180px"><label for="linkName">Tên hiển thị</label><input id="linkName" autocomplete="off" placeholder="Để trống: lấy tên thư mục"></div>
+        <div class="field" style="flex:0 1 180px"><label for="linkOwner">Gallery của</label><select id="linkOwner"></select></div>
+        <button class="btn light" type="submit">Liên kết thư mục</button>
+      </div>
+      <label class="check"><input type="checkbox" id="linkDrive" checked><span>Lưu ảnh nhỏ và video đã chuyển đổi lên chính ổ này (thư mục ẩn <b>.homelight</b>), không tốn dung lượng máy. Bỏ chọn nếu ổ chỉ đọc: khi đó cần khoảng 0,4 MB trên máy cho mỗi ảnh, video thì cỡ bằng video gốc.</span></label>
+    </form>
+    <p class="msg" id="linkMsg" role="status"></p>
+    <div class="links" id="links"></div>
   </section>
 </main>
 
@@ -252,6 +312,147 @@ function userRow(u) {
 async function loadUsers() {
   const list = await api('GET', '/api/users');
   $('users').replaceChildren(...list.map(userRow));
+  // Chọn người sẽ thấy ảnh của thư mục liên kết
+  const owner = $('linkOwner'), keep = owner.value || me.id;
+  owner.replaceChildren(...list.map(u => new Option(u.username + (u.id === me.id ? ' (bạn)' : ''), u.id)));
+  owner.value = keep;
+}
+
+// ---------- Cổng máy chủ ----------
+// Mở qua Tailscale Funnel / tunnel thì địa chỉ không có cổng riêng (https mặc định)
+const viaTunnel = () => location.port === '';
+function showPort(s) {
+  $('portNow').textContent = s.port;
+  $('portInput').value = '';
+  const locked = !!s.envPort;
+  $('portInput').disabled = $('portForm').querySelector('button').disabled = locked;
+  if (locked) say($('portMsg'), `Cổng đang được đặt bằng biến môi trường PORT=${s.envPort} khi chạy server. Chạy lại bằng "node server.js" (không có PORT) để đổi cổng ở đây.`);
+  $('portHint').innerHTML = `Dùng Tailscale Funnel thì sau khi đổi cổng, chạy trên máy chủ: <code>tailscale funnel --bg <span></span></code>. Lối tắt / file .bat có ghi cổng cũ thì sửa lại cho khớp.`;
+  $('portHint').querySelector('span').textContent = s.port;
+}
+async function loadSettings() {
+  try { showPort(await api('GET', '/api/settings')); } catch (err) { say($('portMsg'), err.message); }
+}
+$('portForm').onsubmit = async e => {
+  e.preventDefault();
+  const port = Number($('portInput').value);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) return say($('portMsg'), 'Cổng phải là số từ 1024 đến 65535');
+  const now = $('portNow').textContent;
+  if (String(port) === now) return say($('portMsg'), `Gallery đang chạy ở cổng ${port} rồi.`, true);
+  let warn = `Chuyển gallery sang cổng ${port}? Địa chỉ ở cổng ${now} sẽ ngừng hoạt động sau vài giây.`;
+  if (viaTunnel()) warn += `\n\nBạn đang mở qua đường link công khai (Tailscale Funnel…). Link này sẽ mất kết nối cho tới khi chạy "tailscale funnel --bg ${port}" trên máy chủ.`;
+  if (!confirm(warn)) return;
+  say($('portMsg'), 'Đang mở cổng mới…', true);
+  try {
+    const r = await api('PUT', '/api/settings', { port });
+    showPort(r);
+    if (location.port === String(r.old)) {
+      const next = `${location.protocol}//${location.hostname}:${r.port}/account.html`;
+      say($('portMsg'), `Đã chuyển sang cổng ${r.port}, đang mở ${next}…`, true);
+      setTimeout(() => { location.href = next; }, 1200);
+    } else {
+      say($('portMsg'), `Đã chuyển sang cổng ${r.port}. Nhớ chạy lại "tailscale funnel --bg ${r.port}" trên máy chủ để link công khai trỏ sang cổng mới.`, true);
+    }
+  } catch (err) { say($('portMsg'), err.message); }
+};
+
+// ---------- Ổ cứng ngoài (thư mục liên kết) ----------
+const fmtTime = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' });
+const FOLDER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+let browsing = null, linksTimer = 0;
+
+async function browse(path) {
+  try {
+    browsing = await api('GET', '/api/links/browse' + (path ? '?path=' + encodeURIComponent(path) : ''));
+  } catch (err) { say($('linkMsg'), err.message); return; }
+  $('browser').hidden = false;
+  $('brPath').textContent = browsing.path ? `${browsing.path} · ${browsing.media} ảnh/video ở đây` : 'Chọn ổ đĩa';
+  $('brUp').disabled = browsing.parent === null;
+  $('brPick').disabled = !browsing.path;
+  const items = browsing.dirs.map(d => {
+    const li = document.createElement('li'), b = document.createElement('button');
+    b.type = 'button'; b.innerHTML = FOLDER_SVG; b.append(d.name);
+    b.onclick = () => browse(d.path);
+    li.append(b); return li;
+  });
+  if (!items.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Không có thư mục con'; items.push(li); }
+  $('brList').replaceChildren(...items);
+}
+$('browseBtn').onclick = () => $('browser').hidden ? browse($('linkPath').value.trim()) : ($('browser').hidden = true);
+$('brUp').onclick = () => browse(browsing.parent);
+$('brPick').onclick = () => { $('linkPath').value = browsing.path; $('browser').hidden = true; };
+
+$('linkForm').onsubmit = async e => {
+  e.preventDefault();
+  say($('linkMsg'), 'Đang liên kết…', true);
+  try {
+    const l = await api('POST', '/api/links', { path: $('linkPath').value, name: $('linkName').value, uid: $('linkOwner').value, cache: $('linkDrive').checked ? 'drive' : 'local' });
+    $('linkPath').value = $('linkName').value = '';
+    say($('linkMsg'), l.note || `Đã liên kết "${l.name}". Ảnh sẽ hiện dần trong gallery của ${l.owner} trong lúc đọc ổ.`, !l.note);
+    loadLinks();
+  } catch (err) { say($('linkMsg'), err.message); }
+};
+
+function linkRow(l) {
+  const row = document.createElement('div');
+  row.className = 'link';
+  const admin = me.role === 'admin';
+  row.innerHTML = `
+    <div class="who"><b></b><span class="dot"></span><small class="p"></small><small class="s"></small></div>
+    <div class="acts">
+      <button class="btn small" data-act="scan">Quét lại</button>
+      ${admin ? `<button class="btn small" data-act="move">Đổi đường dẫn</button>
+      <button class="btn small danger" data-act="delete">Gỡ liên kết</button>` : ''}
+    </div>
+    <form class="reset" hidden><input spellcheck="false" autocomplete="off"><button class="btn small light" type="submit">Lưu</button></form>`;
+  row.querySelector('.who b').textContent = l.name;
+  const dot = row.querySelector('.dot');
+  dot.textContent = l.scanning ? 'Đang đọc ổ…' : l.online ? 'Đang cắm' : 'Chưa cắm ổ';
+  dot.classList.add(l.scanning ? 'busy' : l.online ? 'on' : 'off');
+  row.querySelector('.p').textContent = l.path;
+  const bits = [`${l.photos} ảnh`, `${l.videos} video`];
+  if (l.hidden) bits.push(`${l.hidden} đã ẩn`);
+  if (admin) bits.push('của ' + l.owner);
+  bits.push(l.cache === 'drive' ? 'ảnh nhỏ lưu trên ổ này' : 'ảnh nhỏ lưu trên máy chủ');
+  if (l.lastScan) bits.push('quét lúc ' + fmtTime.format(l.lastScan));
+  if (l.error) bits.push('lỗi: ' + l.error);
+  row.querySelector('.s').textContent = bits.join(' · ');
+
+  row.querySelector('[data-act="scan"]').onclick = async () => {
+    try {
+      const v = await api('POST', `/api/links/${l.id}/scan`);
+      say($('linkMsg'), v.online ? `Đang quét lại "${l.name}"…` : `Không thấy ${l.path}. Ổ đã cắm chưa? Nếu Windows đổi ký tự ổ, bấm "Đổi đường dẫn".`, v.online);
+      loadLinks();
+    } catch (err) { say($('linkMsg'), err.message); }
+  };
+  const form = row.querySelector('.reset');
+  const moveBtn = row.querySelector('[data-act="move"]');
+  if (moveBtn) moveBtn.onclick = () => { form.hidden = !form.hidden; if (!form.hidden) { form.querySelector('input').value = l.path; form.querySelector('input').focus(); } };
+  form.onsubmit = async e => {
+    e.preventDefault();
+    try { await api('PATCH', '/api/links/' + l.id, { path: form.querySelector('input').value }); say($('linkMsg'), 'Đã đổi đường dẫn, ảnh vẫn giữ nguyên.', true); loadLinks(); }
+    catch (err) { say($('linkMsg'), err.message); }
+  };
+  const delBtn = row.querySelector('[data-act="delete"]');
+  if (delBtn) delBtn.onclick = async () => {
+    if (!confirm(`Gỡ liên kết "${l.name}"?\n\n${l.photos + l.videos} ảnh/video sẽ biến khỏi gallery (kể cả trong album). File trên ổ vẫn giữ nguyên, không bị xoá.`)) return;
+    try { await api('DELETE', '/api/links/' + l.id); say($('linkMsg'), `Đã gỡ "${l.name}".`, true); loadLinks(); }
+    catch (err) { say($('linkMsg'), err.message); }
+  };
+  return row;
+}
+
+async function loadLinks() {
+  clearTimeout(linksTimer);
+  const list = await api('GET', '/api/links').catch(() => []);
+  $('links').replaceChildren(...list.map(linkRow));
+  if (me.role !== 'admin') {
+    // Người dùng thường chỉ xem trạng thái các ổ đã liên kết cho mình
+    $('drives').hidden = !list.length;
+    $('linkForm').hidden = true;
+    $('drivesIntro').textContent = 'Các thư mục trên ổ cứng ngoài mà quản trị viên đã liên kết vào gallery của bạn.';
+  }
+  if (list.some(l => l.scanning)) linksTimer = setTimeout(loadLinks, 3000);
 }
 
 (async () => {
@@ -263,7 +464,8 @@ async function loadUsers() {
   $('meId').textContent = me.id;
   $('meRole').textContent = roleName(me.role);
   $('meCreated').textContent = fmtDate.format(me.created);
-  if (me.role === 'admin') { $('admin').hidden = false; loadUsers(); }
+  if (me.role === 'admin') { $('admin').hidden = false; $('serverPanel').hidden = false; $('drives').hidden = false; loadUsers(); loadSettings(); }
+  loadLinks();
 })();
 </script>
 </body>
