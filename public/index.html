@@ -472,6 +472,13 @@
     box-shadow: 0 40px 120px -30px rgb(var(--amb) / .45), 0 30px 80px rgba(0,0,0,.6);
   }
   .lb-stage img.lo { filter: blur(3px); } /* đang hiện ảnh nhỏ, chờ ảnh nét */
+  /* Phóng to ảnh: tự xử lý chạm trên khung ảnh, chỗ khác trong lightbox cũng không cho trình duyệt phóng cả trang */
+  .lb:not(.is-video) { touch-action: pan-x pan-y; }
+  .lb:not(.is-video) .lb-stage { touch-action: none; }
+  #lbImg { cursor: zoom-in; -webkit-user-drag: none; }
+  .lb-stage.zoomed { overflow: hidden; cursor: grab; } /* chỉ cắt khi đang phóng: lúc mở/đóng ảnh còn bay ra ngoài khung */
+  .lb-stage.zoomed #lbImg { cursor: grab; }
+  .lb-stage.panning, .lb-stage.panning #lbImg { cursor: grabbing; }
   .lb-stage video { background: #000; outline: none; }
   .lb-stage [hidden] { display: none; }
   /* Chọn chất lượng video */
@@ -490,7 +497,7 @@
   .qmenu button.on::after { content: "✓"; margin-left: auto; }
   .qmenu .note { padding: 6px 12px 8px; font-size: 12px; line-height: 1.4; opacity: .6; max-width: 240px; }
   .lb-btn.hd { width: auto; padding: 0 12px; border-radius: 21px; font: 600 12px/1 var(--sans, sans-serif); letter-spacing: .08em; white-space: nowrap; }
-  .lb-nav { position: absolute; top: 50%; margin-top: -26px; width: 52px; height: 52px; }
+  .lb-nav { position: absolute; z-index: 2; top: 50%; margin-top: -26px; width: 52px; height: 52px; } /* nằm trên ảnh đang phóng */
   .lb-nav.prev { left: 20px; } .lb-nav.next { right: 20px; }
   /* Xem video ngang: lề hẹp hơn để khung video to hơn (nút chuyển nằm sát mép) */
   @media (min-width: 761px) {
@@ -2234,6 +2241,12 @@ async function removePhoto(p) {
 const lb = $('lb'), lbImg = $('lbImg'), lbVid = $('lbVid'), lbBg = [...document.querySelectorAll('.lb-bg i')];
 const lbMedia = () => lbImg.hidden ? lbVid : lbImg; // ảnh hoặc video đang hiện
 let bgFront = 0;
+const lbStage = $('lbStage');
+const zoom = { s: 1, x: 0, y: 0 }; // tỉ lệ so với lúc vừa khung (1-5) và độ dời (px) của #lbImg
+const zPtrs = new Map();           // các ngón/chuột đang giữ
+const zTouches = new Set();         // mọi ngón trên cả lightbox, kể cả ngoài khung ảnh
+let zGest = null, zLastTap = null, zEat = false, zEatT = 0, zClipT = 0;
+let lbPinned = false;              // đang giữ nguyên khung ảnh vì đổi nguồn lúc đang phóng
 
 async function openLB(i, fromImg) {
   current = i;
@@ -2241,7 +2254,7 @@ async function openLB(i, fromImg) {
   buildStrip();
   await setLB(0, true);
   const el = lbMedia();
-  if (fromImg && !reduceMotion) {
+  if (fromImg && !reduceMotion && zoom.s === 1) { // đã phóng trong lúc chờ giải mã thì thôi hiệu ứng, nó sẽ đè transform
     const a = fromImg.getBoundingClientRect(), b = el.getBoundingClientRect();
     if (b.width) el.animate([
       { transform: `translate(${a.left + a.width / 2 - b.left - b.width / 2}px, ${a.top + a.height / 2 - b.top - b.height / 2}px) scale(${a.width / b.width})`, borderRadius: '16px' },
@@ -2255,6 +2268,7 @@ function closeLB() {
   const done = () => { lb.classList.remove('open'); document.body.classList.remove('lb-open'); current = -1; };
   const el = lbMedia();
   stopVideo(); toggleQMenu(false);
+  lbZoomReset(); // về vừa khung trước khi đo vị trí cho hiệu ứng đóng
   if (img && !reduceMotion) {
     const a = img.getBoundingClientRect(), b = el.getBoundingClientRect();
     if (a.bottom > 0 && a.top < innerHeight && b.width) {
@@ -2293,8 +2307,13 @@ function loadSharp(p, src) {
   const img = new Image(); img.src = src;
   img.decode().catch(() => {}).then(() => {
     if (view[current] !== p || !img.naturalWidth) return;
+    const zoomed = zoom.s > 1; // đang phóng: giữ nguyên khung để ảnh không nhảy, về vừa khung mới đổi cỡ
+    if (zoomed && !lbImg.style.width) { lbImg.style.width = lbImg.offsetWidth + 'px'; lbImg.style.height = lbImg.offsetHeight + 'px'; lbPinned = true; }
     lbImg.src = src; lbImg.classList.remove('lo');
-    if (src === p.url) { lbImg.style.width = lbImg.style.height = ''; $('lbFull').classList.add('on'); }
+    if (src === p.url) {
+      if (zoomed) lbPinned = true; else lbImg.style.width = lbImg.style.height = '';
+      $('lbFull').classList.add('on');
+    }
   });
 }
 const lbCap = p => isVideo(p) || (p.preview || p.url) === p.url ? Infinity : 1920;
@@ -2304,6 +2323,7 @@ async function setLB(dir, first) {
   lbFull = false; $('lbFull').classList.remove('on');
   stopVideo(); toggleQMenu(false);
   lbImg.hidden = vid; lbVid.hidden = !vid; $('lbQ').hidden = !vid; lb.classList.toggle('is-video', vid);
+  lbZoomReset();
   fitLB(p, lbCap(p));
   lbImg.classList.toggle('lo', small !== big);
   lbImg.src = small; lbImg.alt = p.name;
@@ -2313,7 +2333,7 @@ async function setLB(dir, first) {
   const back = lbBg[1 - bgFront];
   back.style.backgroundImage = `url("${lbBackdrop(lbImg)}")`; back.classList.add('on'); lbBg[bgFront].classList.remove('on'); bgFront = 1 - bgFront;
   syncLB();
-  if (dir && !first && !reduceMotion) {
+  if (dir && !first && !reduceMotion && zoom.s === 1) {
     lbMedia().animate([{ opacity: 0, transform: `translateX(${dir * 60}px) scale(.97)` }, { opacity: 1, transform: 'none' }],
       { duration: 550, easing: 'cubic-bezier(.2,.8,.2,1)' });
   }
@@ -2323,7 +2343,7 @@ async function setLB(dir, first) {
     playVideo(p);
   } else if (small !== big) loadSharp(p, big);
 }
-addEventListener('resize', () => { const p = view[current]; if (p && !lbFull) fitLB(p, lbCap(p)); });
+addEventListener('resize', () => { const p = view[current]; lbZoomReset(); if (p && !lbFull) fitLB(p, lbCap(p)); });
 function syncLB() {
   const p = view[current]; if (!p) return;
   $('lbDate').textContent = fmtLong.format(new Date(when(p)));
@@ -2381,7 +2401,7 @@ $('lbFull').onclick = () => {
 };
 $('lbDownload').onclick = () => { const p = view[current], a = document.createElement('a'); a.href = p.url; a.download = p.name; a.click(); };
 $('lbSlide').onclick = () => { location.href = 'slideshow.html' + slideQuery(view[current].id); };
-$('lbStage').addEventListener('click', e => { if (e.target === e.currentTarget) closeLB(); });
+$('lbStage').addEventListener('click', e => { if (e.target === e.currentTarget && !zEat && zoom.s === 1) closeLB(); }); // kéo/chụm không tính là bấm; đang phóng thì bấm ra ngoài không đóng
 addEventListener('keydown', e => {
   if (!lb.classList.contains('open')) return;
   if (e.target === lbVid && [' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return; // phím tua/âm lượng của video
@@ -2392,15 +2412,135 @@ addEventListener('keydown', e => {
   else if (e.key === 'Delete') removePhoto(view[current]);
   else if (e.key.toLowerCase() === 'f') toggleFav(view[current]);
   else if (e.key.toLowerCase() === 'p') togglePublic(view[current]);
+  else if (!lbImg.hidden && !e.ctrlKey && !e.metaKey && !e.altKey && ['+', '=', '-', '0'].includes(e.key)) {
+    const cx = lbStage.clientWidth / 2, cy = lbStage.clientHeight / 2;
+    lbZoomTo(e.key === '0' ? 1 : zoom.s * (e.key === '-' ? 1 / 1.4 : 1.4), cx, cy, true);
+  }
 });
-let touchX = null;
-lbImg.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, { passive: true });
-lbImg.addEventListener('touchend', e => {
-  if (touchX === null) return;
-  const dx = e.changedTouches[0].clientX - touchX;
-  if (Math.abs(dx) > 50) go(current + (dx < 0 ? 1 : -1));
-  touchX = null;
+
+// ---------- Phóng to ảnh trong lightbox: translate + scale quanh tâm ảnh (giữ transform-origin mặc định vì hiệu ứng mở/đóng/chuyển ảnh tính theo tâm) ----------
+// Tính theo offset* (vị trí trước transform) nên không phụ thuộc hiệu ứng đang chạy
+function zClampAxis(t, len, box, c0) {
+  if (zoom.s <= 1) return 0;
+  const half = len * zoom.s / 2;
+  if (half * 2 >= box) return Math.min(half, Math.max(box - half, c0 + t)) - c0;
+  return (box / 2 - c0) * (len * zoom.s - len) / (box - len); // nhỏ hơn khung: canh giữa, trượt dần vì lề khung lệch nhau (Album giấy)
+}
+function lbZoomApply(anim) {
+  const w = lbImg.offsetWidth, h = lbImg.offsetHeight;
+  zoom.x = zClampAxis(zoom.x, w, lbStage.clientWidth, lbImg.offsetLeft + w / 2);
+  zoom.y = zClampAxis(zoom.y, h, lbStage.clientHeight, lbImg.offsetTop + h / 2);
+  anim = anim && !reduceMotion;
+  lbImg.style.transition = anim ? 'transform .18s ease-out' : 'none';
+  lbImg.style.transform = zoom.s > 1 ? `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})` : '';
+  clearTimeout(zClipT);
+  if (zoom.s > 1 || !anim) lbStage.classList.toggle('zoomed', zoom.s > 1);
+  else zClipT = setTimeout(() => lbStage.classList.remove('zoomed'), 200); // cắt tiếp đến khi thu nhỏ xong
+  if (zoom.s === 1 && lbPinned) {
+    lbPinned = false;
+    const p = view[current];
+    if ($('lbFull').classList.contains('on')) lbImg.style.width = lbImg.style.height = '';
+    else if (p) fitLB(p, lbCap(p));
+  }
+}
+// (px, py): điểm tính từ góc khung, giữ nguyên dưới con trỏ; center: đưa điểm đó ra giữa khung
+function lbZoomTo(s, px, py, anim, center) {
+  if (zoom.s === 1) lbImg.getAnimations().forEach(a => a.finish()); // hiệu ứng mở ảnh đang chạy sẽ đè transform
+  s = Math.min(5, Math.max(1, s));
+  if (s < zoom.s && s < 1.01) s = 1; // đang thu nhỏ mà gần vừa khung thì về hẳn (sai số số thực); chiều phóng to không chặn để chụm chậm vẫn ăn
+  const k = s / zoom.s;
+  const cx = lbImg.offsetLeft + lbImg.offsetWidth / 2, cy = lbImg.offsetTop + lbImg.offsetHeight / 2;
+  zoom.x = (center ? lbStage.clientWidth / 2 : px) - (px - cx - zoom.x) * k - cx;
+  zoom.y = (center ? lbStage.clientHeight / 2 : py) - (py - cy - zoom.y) * k - cy;
+  zoom.s = s;
+  lbZoomApply(anim);
+}
+function lbZoomReset(anim) {
+  if (zPtrs.size) { zPtrs.clear(); zEatClick(); }
+  lbStage.classList.remove('panning');
+  zoom.s = 1; zoom.x = zoom.y = 0;
+  lbZoomApply(anim);
+}
+// Bỏ qua cú click trình duyệt phát ra ngay sau khi kéo/chụm/chạm đúp
+function zEatClick() {
+  zEat = true; clearTimeout(zEatT);
+  zEatT = setTimeout(() => { zEat = false; }, 350);
+}
+function zCapture(id) { try { lbStage.setPointerCapture(id); } catch {} }
+
+lbImg.addEventListener('dragstart', e => e.preventDefault());
+lbStage.addEventListener('wheel', e => {
+  if (lbImg.hidden || !lb.classList.contains('open')) return; // đang đóng dần: không đụng hiệu ứng đóng
+  e.preventDefault();
+  let d = e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 400 : 1);
+  d = Math.max(-240, Math.min(240, d));
+  const pinch = e.ctrlKey && e.deltaMode === 0 && Math.abs(e.deltaY) < 50; // chụm trên trackpad: delta nhỏ, nhiều sự kiện liên tục; Ctrl + con lăn chuột thì như lăn thường
+  const r = lbStage.getBoundingClientRect();
+  lbZoomTo(zoom.s * Math.exp(-d * (pinch ? .01 : .002)), e.clientX - r.left, e.clientY - r.top, !pinch && Math.abs(d) >= 40);
+}, { passive: false });
+// Có từ hai ngón trên lightbox (một ngón có thể nằm ngoài khung ảnh) thì không còn là vuốt chuyển ảnh
+lb.addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'touch') return;
+  zTouches.add(e.pointerId);
+  if (zTouches.size > 1 && zGest) zGest.moved = zGest.pinch = true;
+}, true);
+// Chỉ bắt con trỏ khi đã kéo thật: bắt sớm thì click đổi đích sang khung ảnh và làm đóng lightbox
+lbStage.addEventListener('pointerdown', e => {
+  if (lbImg.hidden || !lb.classList.contains('open') || (e.pointerType === 'mouse' && (e.button || e.ctrlKey)) || e.target.closest('.lb-nav')) return;
+  if (e.pointerType === 'mouse') zPtrs.clear();
+  zPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (zPtrs.size === 1) zGest = { x: e.clientX, y: e.clientY, s: zoom.s, moved: false, pinch: false, onImg: e.target === lbImg };
+  if (zPtrs.size === 1 && zTouches.size > 1) zGest.moved = zGest.pinch = true;
+  else if (zPtrs.size > 1) { zGest.moved = zGest.pinch = true; zPtrs.forEach((_, id) => zCapture(id)); lbStage.classList.remove('panning'); }
 });
+addEventListener('pointermove', e => {
+  const q = zPtrs.get(e.pointerId); if (!q) return;
+  if (e.pointerType === 'mouse' && !e.buttons) { zPtrs.delete(e.pointerId); lbStage.classList.remove('panning'); return; } // mất pointerup (menu chuột phải, đổi cửa sổ)
+  if (zPtrs.size > 1) { // hai ngón: phóng quanh trung điểm và đi theo trung điểm
+    const [a, b] = zPtrs.values();
+    const d0 = Math.hypot(a.x - b.x, a.y - b.y), mx0 = (a.x + b.x) / 2, my0 = (a.y + b.y) / 2;
+    q.x = e.clientX; q.y = e.clientY;
+    const d1 = Math.hypot(a.x - b.x, a.y - b.y), mx1 = (a.x + b.x) / 2, my1 = (a.y + b.y) / 2;
+    const r = lbStage.getBoundingClientRect();
+    lbZoomTo(zoom.s * Math.max(d1, 1) / Math.max(d0, 1), mx0 - r.left, my0 - r.top);
+    zoom.x += mx1 - mx0; zoom.y += my1 - my0;
+    lbZoomApply();
+    return;
+  }
+  const dx = e.clientX - q.x, dy = e.clientY - q.y;
+  q.x = e.clientX; q.y = e.clientY;
+  if (!zGest.moved) {
+    if (Math.hypot(e.clientX - zGest.x, e.clientY - zGest.y) < 5) return;
+    zGest.moved = true; zCapture(e.pointerId);
+    if (zoom.s > 1) lbStage.classList.add('panning');
+  }
+  if (zoom.s > 1) { zoom.x += dx; zoom.y += dy; lbZoomApply(); }
+});
+function zPointerEnd(e) {
+  zTouches.delete(e.pointerId);
+  if (!zPtrs.delete(e.pointerId) || zPtrs.size) return; // còn ngón khác thì đi tiếp (kéo ảnh)
+  lbStage.classList.remove('panning');
+  const g = zGest;
+  if (g.moved) zEatClick();
+  if (zoom.s > 1 && zoom.s < 1.03) { zoom.s = 1; lbZoomApply(true); } // chụm gần hết thì về hẳn vừa khung
+  if (e.type !== 'pointerup') return;
+  if (g.moved) { // vuốt chuyển ảnh: chỉ một ngón, lúc chưa phóng
+    const dx = e.clientX - g.x;
+    if (!g.pinch && g.s === 1 && e.pointerType !== 'mouse' && Math.abs(dx) > 50) go(current + (dx < 0 ? 1 : -1));
+    return;
+  }
+  const t = e.timeStamp, l = zLastTap;
+  if (l && t - l.t < (e.pointerType === 'mouse' ? 500 : 300) && Math.hypot(e.clientX - l.x, e.clientY - l.y) < 30) { // bấm/chạm đúp
+    zLastTap = null;
+    const r = lbStage.getBoundingClientRect();
+    if (zoom.s > 1) { zEatClick(); lbZoomTo(1, e.clientX - r.left, e.clientY - r.top, true); }
+    else if (g.onImg) { zEatClick(); lbZoomTo(2.5, e.clientX - r.left, e.clientY - r.top, true, true); }
+  } else zLastTap = { t, x: e.clientX, y: e.clientY };
+}
+addEventListener('pointerup', zPointerEnd);
+addEventListener('pointercancel', zPointerEnd);
+// Safari iOS vẫn phóng cả trang dù có touch-action
+for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, e => { if (lb.classList.contains('open')) e.preventDefault(); }, { passive: false });
 
 // ---------- Video: HLS nhiều mức chất lượng, tự đổi theo tốc độ mạng (server tạo bằng ffmpeg, xem video.js) ----------
 // Trình phát hls.js tải từ CDN (không tốn đường truyền nhà bạn), CDN lỗi thì lấy bản trong /vendor/.

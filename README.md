@@ -115,6 +115,7 @@ Gallery được thiết kế để chạy trên máy tính ở nhà với mạn
 - Lưới ảnh chia theo năm, nghiêng 3D khi rê chuột, màu ánh sáng lấy từ ảnh
 - Ba giao diện, đổi bằng nút **Giao diện** trên thanh trên cùng: **Điện ảnh** (nền tối, nghiêng 3D), **Album giấy** (nền giấy sáng, khung ảnh trắng, chữ kiểu tạp chí) và **Ô màu** (lưới ô bo tròn, thanh bên album, ô "Ngày này năm trước"; trên điện thoại có thanh điều hướng dưới đáy). Lựa chọn được nhớ trong trình duyệt
 - Yêu thích, tìm kiếm, sắp xếp, xem phóng to, tải xuống, xoá
+- Zoom ảnh khi xem (tối đa 5 lần): cuộn chuột, bấm đúp, phím `+` `-` `0`, chụm hai ngón hoặc chạm đúp trên điện thoại; kéo để di chuyển
 - Trình chiếu (`/slideshow.html`): băng chuyền 3D, Ken Burns, nhạc nền, toàn màn hình, phím tắt
 
 ## Cấu trúc
