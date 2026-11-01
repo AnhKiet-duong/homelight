@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <title>Kỷ Niệm</title>
+<script src="/i18n.js"></script>
+<script src="/i18n/slideshow.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600&family=Oswald:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@1,400;1,500&display=swap" rel="stylesheet">
@@ -197,6 +199,8 @@
     animation: titleIn 2.4s var(--ease) .4s forwards;
     background: linear-gradient(180deg, #fff 35%, rgb(var(--amb)) 150%); -webkit-background-clip: text; background-clip: text; color: transparent;
   }
+  /* "Memories" là một từ liền, không xuống dòng được: chữ nhỏ và giãn ít hơn để không tràn màn hình lúc mở đầu */
+  :lang(en) .intro h1 { font-size: clamp(48px, 14vw, 200px); letter-spacing: .16em; margin-right: -.16em; }
   @keyframes titleIn { to { letter-spacing: .04em; margin-right: -.04em; opacity: 1; filter: blur(0); } }
   .meta { font-family: var(--serif); font-style: italic; font-size: clamp(17px, 2vw, 22px); color: var(--muted); opacity: 0; animation: fade 1.4s ease 1.4s forwards; }
   @keyframes fade { to { opacity: 1; } }
@@ -308,6 +312,7 @@
   </div>
 </div>
 
+<script>i18n.apply()</script>
 <script>
 const $ = id => document.getElementById(id);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -336,8 +341,10 @@ let elapsed = 0, lastT = performance.now();
 const colors = new Map();
 
 const when = p => p.taken || p.added;
-const fmtDay = new Intl.DateTimeFormat('vi-VN', { weekday: 'long' });
+const fmtDay = new Intl.DateTimeFormat(i18n.locale, { weekday: 'long' });
 const pad = n => String(n).padStart(2, '0');
+// Tiếng Việt không có số nhiều; tiếng Anh tra khoá riêng "...#1" khi n = 1
+const count = (n, key) => t(n === 1 && i18n.lang === 'en' ? key + '#1' : key, n);
 // Tên file mặc định của máy ảnh / điện thoại thì không hiện
 const boringName = n => /^(img|dsc|dscn|pxl|mvimg|photo|image|screenshot|pasted|ảnh chụp)[\s_\-.\d()]/i.test(n) || /^[\d_\-\s]+\./.test(n);
 
@@ -543,11 +550,13 @@ async function show(i, instant) {
 function setCaption(p) {
   const d = new Date(when(p));
   const cap = $('cap'), title = $('title');
-  cap.innerHTML = `<span class="mask"><span class="dm">${pad(d.getDate())}<em>.</em>${pad(d.getMonth() + 1)}</span></span>
+  // en-US ghi tháng trước ngày
+  const [d1, d2] = i18n.lang === 'en' ? [d.getMonth() + 1, d.getDate()] : [d.getDate(), d.getMonth() + 1];
+  cap.innerHTML = `<span class="mask"><span class="dm">${pad(d1)}<em>.</em>${pad(d2)}</span></span>
     <span class="mask"><span class="yr"></span></span>`;
   cap.querySelector('.yr').textContent = `${d.getFullYear()} — ${fmtDay.format(d)}`;
   title.innerHTML = '';
-  if (p.fav) title.insertAdjacentHTML('beforeend', '<span class="mask"><span class="fv">★ Yêu thích</span></span>');
+  if (p.fav) title.insertAdjacentHTML('beforeend', `<span class="mask"><span class="fv">★ ${t('Yêu thích')}</span></span>`);
   if (!boringName(p.name)) {
     const m = document.createElement('span'); m.className = 'mask';
     const s = document.createElement('span'); s.className = 'nm'; s.textContent = p.name.replace(/\.[^.]+$/, '');
@@ -581,7 +590,7 @@ async function keepAwake(on) {
 function setPlaying(on, flash) {
   playing = on;
   $('playBtn').innerHTML = on ? ICON.pause : ICON.play;
-  $('playBtn').setAttribute('aria-label', on ? 'Tạm dừng' : 'Phát');
+  $('playBtn').setAttribute('aria-label', t(on ? 'Tạm dừng' : 'Phát'));
   if (kbAnim) on ? kbAnim.play() : kbAnim.pause();
   const audio = $('audio');
   if (audio.src) on ? audio.play().catch(() => {}) : audio.pause();
@@ -627,17 +636,17 @@ function rebuild() {
 }
 $('shuffleBtn').onclick = () => {
   shuffle = !shuffle; store.set('shuffle', shuffle); refreshToggles(); rebuild();
-  toast(shuffle ? 'Trộn ngẫu nhiên: bật' : 'Theo thứ tự thời gian');
+  toast(t(shuffle ? 'Trộn ngẫu nhiên: bật' : 'Theo thứ tự thời gian'));
 };
 $('favBtn').onclick = () => {
-  if (!favOnly && !all.some(p => p.fav)) { toast('Chưa có ảnh yêu thích nào'); return; }
+  if (!favOnly && !all.some(p => p.fav)) { toast(t('Chưa có ảnh yêu thích nào')); return; }
   favOnly = !favOnly; store.set('fav', favOnly); refreshToggles(); rebuild();
-  toast(favOnly ? `Chỉ ảnh yêu thích · ${list.length} ảnh` : `Tất cả · ${list.length} ảnh`);
+  toast(t(favOnly ? 'Chỉ ảnh yêu thích · {0}' : 'Tất cả · {0}', count(list.length, '{0} ảnh')));
 };
 
 $('speed').value = String(seconds);
 if (!$('speed').value) { seconds = 5; $('speed').value = '5'; }
-$('speed').onchange = () => { seconds = Number($('speed').value); store.set('speed', seconds); toast(`Mỗi ảnh ${seconds} giây`); };
+$('speed').onchange = () => { seconds = Number($('speed').value); store.set('speed', seconds); toast(t('Mỗi ảnh {0} giây', seconds)); };
 
 // Nhạc nền: chọn file nhạc trong máy, chỉ phát tại chỗ, không tải lên server
 $('musicBtn').onclick = () => {
@@ -645,14 +654,14 @@ $('musicBtn').onclick = () => {
   if (audio.src) {
     audio.muted = !audio.muted;
     $('musicBtn').classList.toggle('on', !audio.muted);
-    toast(audio.muted ? 'Đã tắt nhạc' : 'Đã bật nhạc');
+    toast(t(audio.muted ? 'Đã tắt nhạc' : 'Đã bật nhạc'));
   } else $('musicFile').click();
 };
 $('musicFile').onchange = () => {
   const f = $('musicFile').files[0]; if (!f) return;
   const audio = $('audio');
   audio.src = URL.createObjectURL(f); audio.volume = .8; audio.muted = false;
-  $('musicBtn').classList.add('on'); $('musicBtn').title = 'Bật / tắt nhạc (M)';
+  $('musicBtn').classList.add('on'); $('musicBtn').title = t('Bật / tắt nhạc (M)');
   if (playing) audio.play().catch(() => {});
   toast('♪ ' + f.name.replace(/\.[^.]+$/, ''));
 };
@@ -711,7 +720,7 @@ function updateReel() {
   const ys = list.map(p => new Date(when(p)).getFullYear());
   const a = Math.min(...ys), b = Math.max(...ys);
   const range = a === b ? `${a}` : `${a} — ${b}`;
-  $('reel').innerHTML = `Kỷ niệm · <b>${range}</b>`;
+  $('reel').innerHTML = `${t('Kỷ niệm')} · <b>${range}</b>`;
   return range;
 }
 function buildWall() {
@@ -758,17 +767,17 @@ $('startBtn').onclick = start;
       if (album) { const ids = new Set(album.photoIds); all = all.filter(p => ids.has(p.id)); }
     }
   } catch {
-    $('introText').innerHTML = 'Không kết nối được server.<br>Hãy chạy <b>node server.js</b> rồi tải lại trang.';
+    $('introText').innerHTML = t('Không kết nối được server.<br>Hãy chạy <b>node server.js</b> rồi tải lại trang.');
     return;
   }
   if (favOnly && !all.some(p => p.fav)) { favOnly = false; refreshToggles(); }
   buildList(params.get('start'));
   if (!list.length) {
-    $('introText').innerHTML = 'Chưa có ảnh nào để trình chiếu — <a href="/">tải ảnh lên gallery</a> trước nhé.';
+    $('introText').innerHTML = t('Chưa có ảnh nào để trình chiếu — <a href="/">tải ảnh lên gallery</a> trước nhé.');
     return;
   }
   const range = updateReel();
-  $('introText').textContent = `${list.length} khoảnh khắc · ${range}`;
+  $('introText').textContent = `${count(list.length, '{0} khoảnh khắc')} · ${range}`;
   buildWall();
   preload(list[idx]).then(() => {
     if (!started && colors.get(list[idx].id)) document.documentElement.style.setProperty('--amb', colors.get(list[idx].id));

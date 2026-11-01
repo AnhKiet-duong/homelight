@@ -45,6 +45,9 @@ const STATIC_TYPES = {
 };
 // Trang xem được khi chưa đăng nhập
 const OPEN_PAGES = new Set(['/login.html', '/favicon.ico']);
+// i18n.js và từ điển public/i18n/*.js: trang đăng nhập cần. So khớp chặt để "/i18n/..%2f" không lọt qua
+const OPEN_I18N = /^\/i18n(\/[a-z]+)?\.js$/;
+const LANGS = ['en', 'vi'];
 
 // ---------- Lưu file JSON ----------
 function readJson(file, fallback) {
@@ -507,7 +510,7 @@ async function authApi(req, res, parts, session) {
   if (action === 'status' && req.method === 'GET') {
     return send(res, 200, {
       user: session ? publicUser(session.user) : null,
-      prefs: session ? { dataSaver: false, ...session.user.prefs } : null, // tuỳ chọn riêng của tài khoản
+      prefs: session ? { dataSaver: false, ...session.user.prefs } : null, // tuỳ chọn riêng của tài khoản; chỉ có lang khi đã lưu
       needsSetup: users.length === 0,
       canSetup: users.length === 0 && isLocalRequest(req),
     });
@@ -549,11 +552,21 @@ async function authApi(req, res, parts, session) {
   if (!session) throw httpError(401, 'Cần đăng nhập');
   const me = session.user;
 
-  // POST /api/prefs — lưu tuỳ chọn của tài khoản: { dataSaver: true|false } (tiết kiệm dữ liệu khi xem bằng 4G/5G)
+  // POST /api/prefs — lưu tuỳ chọn của tài khoản, gửi một hoặc cả hai:
+  // { dataSaver: true|false } (tiết kiệm dữ liệu khi xem bằng 4G/5G), { lang: 'en'|'vi' }
   if (action === 'prefs' && req.method === 'POST') {
-    const body = await readJsonBody(req);
-    if (typeof body.dataSaver !== 'boolean') throw httpError(400, 'Tuỳ chọn không hợp lệ');
-    me.prefs = { ...me.prefs, dataSaver: body.dataSaver };
+    const body = await readJsonBody(req) || {};
+    const patch = {};
+    if (body.dataSaver !== undefined) {
+      if (typeof body.dataSaver !== 'boolean') throw httpError(400, 'Tuỳ chọn không hợp lệ');
+      patch.dataSaver = body.dataSaver;
+    }
+    if (body.lang !== undefined) {
+      if (!LANGS.includes(body.lang)) throw httpError(400, 'Tuỳ chọn không hợp lệ');
+      patch.lang = body.lang;
+    }
+    if (!Object.keys(patch).length) throw httpError(400, 'Tuỳ chọn không hợp lệ');
+    me.prefs = { ...me.prefs, ...patch };
     await saveUsers();
     return send(res, 200, { prefs: me.prefs });
   }
@@ -1445,7 +1458,7 @@ async function handle(req, res) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
 
     const page = url.pathname === '/' ? '/index.html' : url.pathname;
-    if (!session && !OPEN_PAGES.has(page)) {
+    if (!session && !OPEN_PAGES.has(page) && !OPEN_I18N.test(page)) {
       // Chưa đăng nhập: trang thì chuyển sang đăng nhập, còn ảnh/file thì từ chối
       if (page.endsWith('.html')) return send(res, 302, '', { Location: '/login.html?next=' + encodeURIComponent(url.pathname + url.search) });
       return send(res, 401, 'Cần đăng nhập');

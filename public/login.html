@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#07070a">
 <title>Đăng nhập · My Gallery</title>
+<script src="/i18n.js"></script>
+<script src="/i18n/login.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600&family=Oswald:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,400;1,500&display=swap" rel="stylesheet">
@@ -75,11 +77,16 @@
   .btn:hover { background: #fff; box-shadow: 0 10px 40px rgba(255,194,122,.45); }
   .btn:active { transform: scale(.98); }
   .btn:disabled { opacity: .5; pointer-events: none; }
-  :is(.btn, input):focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+  :is(.btn, input, .lang button):focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 
   .error { min-height: 20px; margin: 4px 0 0; font-size: 13px; color: var(--danger); }
   .note { padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 14px; }
   .note b { color: var(--text); font-weight: 500; }
+  /* Chọn ngôn ngữ */
+  .lang { display: flex; justify-content: center; gap: 4px; margin-top: 18px; }
+  .lang button { height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 13px; transition: background .2s, color .2s; }
+  .lang button:hover { color: var(--text); }
+  .lang button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -116,11 +123,23 @@
   <div class="note" id="remoteSetup" hidden>
     Gallery chưa có tài khoản nào. Hãy mở <b>http://localhost:3000</b> ngay trên máy đang chạy server để tạo tài khoản quản trị đầu tiên.
   </div>
+
+  <div class="lang" role="group" aria-label="Ngôn ngữ">
+    <button type="button" data-lang="en" lang="en">English</button>
+    <button type="button" data-lang="vi" lang="vi">Tiếng Việt</button>
+  </div>
 </main>
 
+<script>i18n.apply()</script>
 <script>
 const $ = id => document.getElementById(id);
 let mode = 'login'; // 'login' | 'setup'
+
+// Chưa có tài khoản nên chỉ lưu vào máy; đăng nhập xong sẽ lưu sang tài khoản
+document.querySelectorAll('.lang button').forEach(b => {
+  b.setAttribute('aria-pressed', b.dataset.lang === i18n.lang);
+  b.onclick = () => { if (b.dataset.lang !== i18n.lang) i18n.set(b.dataset.lang); };
+});
 
 // Chỉ quay lại đường dẫn nội bộ, tránh bị chuyển sang trang lạ
 function nextUrl() {
@@ -131,18 +150,18 @@ function nextUrl() {
 async function post(path, body) {
   const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Lỗi ${res.status}`);
+  if (!res.ok) throw new Error(t(data.error) || t('Lỗi {0}', res.status));
   return data;
 }
 
 function setupMode() {
   mode = 'setup';
-  $('title').textContent = 'Tạo tài khoản quản trị';
-  $('sub').textContent = 'Đây là tài khoản đầu tiên, có quyền thêm tài khoản cho người khác. Ảnh đã có sẵn sẽ được chuyển vào tài khoản này.';
+  $('title').textContent = t('Tạo tài khoản quản trị');
+  $('sub').textContent = t('Đây là tài khoản đầu tiên, có quyền thêm tài khoản cho người khác. Ảnh đã có sẵn sẽ được chuyển vào tài khoản này.');
   $('password').autocomplete = 'new-password';
   $('pwHint').hidden = false;
   $('confirmField').hidden = false;
-  $('submit').textContent = 'Tạo tài khoản';
+  $('submit').textContent = t('Tạo tài khoản');
 }
 
 $('form').onsubmit = async e => {
@@ -150,8 +169,8 @@ $('form').onsubmit = async e => {
   $('error').textContent = '';
   const username = $('username').value.trim().toLowerCase();
   const password = $('password').value;
-  if (!username || !password) { $('error').textContent = 'Hãy nhập tên đăng nhập và mật khẩu.'; return; }
-  if (mode === 'setup' && password !== $('confirm').value) { $('error').textContent = 'Hai mật khẩu không khớp.'; return; }
+  if (!username || !password) { $('error').textContent = t('Hãy nhập tên đăng nhập và mật khẩu.'); return; }
+  if (mode === 'setup' && password !== $('confirm').value) { $('error').textContent = t('Hai mật khẩu không khớp.'); return; }
   $('submit').disabled = true;
   try {
     await post(mode === 'setup' ? '/api/setup' : '/api/login', { username, password });
@@ -167,9 +186,9 @@ $('form').onsubmit = async e => {
     const s = await (await fetch('/api/status')).json();
     if (s.user) return location.replace(nextUrl());
     if (s.canSetup) setupMode();
-    else if (s.needsSetup) { $('form').hidden = true; $('sub').hidden = true; $('title').textContent = 'Chưa có tài khoản'; $('remoteSetup').hidden = false; return; }
+    else if (s.needsSetup) { $('form').hidden = true; $('sub').hidden = true; $('title').textContent = t('Chưa có tài khoản'); $('remoteSetup').hidden = false; return; }
   } catch {
-    $('error').textContent = 'Không kết nối được server.';
+    $('error').textContent = t('Không kết nối được server.');
   }
   $('username').focus();
 })();

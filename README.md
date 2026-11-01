@@ -2,7 +2,7 @@
 
 A self-hosted photo and video gallery with a cinematic interface: upload photos and videos, browse them on a timeline, and replay memories in a 3D carousel slideshow. It has login accounts, and each person gets their own photo folder. All you need is Node.js; add `sharp` so photos load quickly on slow connections and `ffmpeg` so videos play smoothly at any network speed.
 
-The app's interface is in Vietnamese, so this README quotes button and menu names as they appear on screen, with an English gloss on first mention.
+The interface is available in English (the default) and Vietnamese. This README quotes button and menu names as they appear in English.
 
 ## Running
 
@@ -11,9 +11,9 @@ npm install      # once: installs sharp for thumbnails (needs Node.js 20.9+; wit
 node server.js
 ```
 
-Open `http://localhost:3000` **on the machine running the server** to create the first admin account (for safety, this step can't be done from another device). Then go to **Tài khoản** (Account) to add other users.
+Open `http://localhost:3000` **on the machine running the server** to create the first admin account (for safety, this step can't be done from another device). Then go to **Account** to add other users.
 
-**Changing the port:** as an admin, go to **Tài khoản → Cổng máy chủ** (Account → Server port) and enter a new port (1024–65535). The server opens the new port immediately without a restart, the page redirects to the new address, and the port is saved in `storage/settings.json` for future runs. If you start with `PORT=8080 node server.js`, the `PORT` variable takes priority and can't be changed from the page. Delete `storage/settings.json` to go back to port 3000.
+**Changing the port:** as an admin, go to **Account → Server port** and enter a new port (1024–65535). The server opens the new port immediately without a restart, the page redirects to the new address, and the port is saved in `storage/settings.json` for future runs. If you start with `PORT=8080 node server.js`, the `PORT` variable takes priority and can't be changed from the page. Delete `storage/settings.json` to go back to port 3000.
 
 Other devices on the same Wi‑Fi network can open the IP address the server prints. To reach the gallery from anywhere while keeping your photos on your own machine, see [docs/truy-cap-tu-xa.md](docs/truy-cap-tu-xa.md) (in Vietnamese).
 
@@ -21,7 +21,7 @@ Other devices on the same Wi‑Fi network can open the IP address the server pri
 
 ## Video
 
-Upload videos the same way as photos (the **Tải ảnh lên** (Upload photos) button, or drag and drop), or copy them into the import folder described below. MP4, MOV (iPhone), MKV, WebM, AVI, 3GP and MTS are accepted, up to 4 GB per video (change this with `VIDEO_MAX_MB=8192`). The recording date is read from the file's metadata.
+Upload videos the same way as photos (the **Upload photos** button, or drag and drop), or copy them into the import folder described below. MP4, MOV (iPhone), MKV, WebM, AVI, 3GP and MTS are accepted, up to 4 GB per video (change this with `VIDEO_MAX_MB=8192`). The recording date is read from the file's metadata.
 
 For smooth playback on slow connections, install **ffmpeg** on the server machine (once), then reopen the window running the server:
 
@@ -46,7 +46,7 @@ With ffmpeg, each video is converted to **HLS** (the way YouTube streams video):
 - ffmpeg runs at low priority, one video at a time, so the machine stays usable during conversion. A long 4K video can take several minutes; the server prints a line each time a level finishes
 - The hls.js player loads from a CDN (so it doesn't use your home bandwidth); if the CDN is unreachable, the copy in `public/vendor/` is used. Safari and iPhone play HLS natively
 - Without ffmpeg (or until the first level is done), the original file is played, and you can still seek as far as it has downloaded. iPhone videos (HEVC) may not play in Chrome until ffmpeg finishes converting them
-- **Tiết kiệm dữ liệu** (Data saver; in the **Giao diện** (Appearance) menu, or the quality button during playback): turn it on when watching over 4G/5G. "Auto" video stays at 360p or below (about 350 MB/hour, compared with about 2 GB/hour at 1080p), videos don't autoplay when opened, only 12 seconds are buffered ahead, and enlarged photos and slideshows use the 1080px size. The setting is stored **per account** on the server, so turning it on from your phone also applies on other devices logged in to the same account
+- **Data saver** (in the **Appearance** menu, or the quality button during playback): turn it on when watching over 4G/5G. "Auto" video stays at 360p or below (about 350 MB/hour, compared with about 2 GB/hour at 1080p), videos don't autoplay when opened, only 12 seconds are buffered ahead, and enlarged photos and slideshows use the 1080px size. The setting is stored **per account** on the server, so turning it on from your phone also applies on other devices logged in to the same account
 - HLS copies live in `storage/users/<id>/thumbs/<video id>-hls/` and take about 30–60% of the original video's size (more for 4K). They can be deleted; the server recreates them on startup. If ffmpeg is installed elsewhere, set `FFMPEG_PATH`
 
 ## Copying photos straight from disk
@@ -61,12 +61,12 @@ The server scans this folder every 10 seconds (and as soon as you open the page)
 
 ## Viewing photos on an external drive (without copying)
 
-To view photos and videos on an external drive without using space on your machine: plug in the drive, log in as an admin, go to **Tài khoản → Ổ cứng ngoài** (Account → External drive), click **Chọn thư mục…** (Choose folder; or type a path, e.g. `E:\Family photos`), choose whose gallery should show these photos, then click **Liên kết thư mục** (Link folder).
+To view photos and videos on an external drive without using space on your machine: plug in the drive, log in as an admin, go to **Account → External drives**, click **Choose folder…** (or type a path, e.g. `E:\Family photos`), choose whose gallery should show these photos, then click **Link folder**.
 
 - Photos and videos are **read in place**, not copied. The original files are never modified, renamed or deleted; the delete button in the gallery only **hides** a photo
-- Subfolders become albums with the same name. Adding or removing photos on the drive updates the gallery automatically (rescanned every 5 minutes, or click **Quét lại** (Rescan))
+- Subfolders become albums with the same name. Adding or removing photos on the drive updates the gallery automatically (rescanned every 5 minutes, or click **Rescan**)
 - Thumbnails and video HLS copies are stored on the drive itself by default, in a hidden `.homelight` folder (safe to delete; the gallery recreates it when needed). If the drive is read-only, or you untick this option, they're stored on the machine: about 0.4 MB per photo, and roughly 30–60% of the original size for video
-- **Unplugging the drive**: its photos are temporarily hidden from the gallery (albums, favorites and public status are kept). Plug it back in and they return within seconds. If Windows changes the drive letter (E: to F:), the server finds it on its own; if not, click **Đổi đường dẫn** (Change path)
+- **Unplugging the drive**: its photos are temporarily hidden from the gallery (albums, favorites and public status are kept). Plug it back in and they return within seconds. If Windows changes the drive letter (E: to F:), the server finds it on its own; if not, click **Change path**
 - The first time you link a drive with many photos, the server needs a while to read them and create thumbnails; photos appear in the gallery gradually. USB 2.0 and HDD drives are slower than SSDs
 - Only admins can link folders (because it allows reading the server's drives). The list is stored in `storage/links.json`
 - Formats: JPEG, PNG, GIF, WebP, AVIF, BMP, HEIC (iPhone), and the video formats listed above
@@ -81,7 +81,7 @@ The gallery is designed to run on a home computer on a home connection. The bott
 
 **Thumbnails instead of originals** (requires `sharp`, installed by `npm install`)
 
-- Each photo gets 3 extra WebP versions: **small** (600px wide, about 30 KB) for the grid, **phone** (1080px wide, about 100 KB) and **screen** (1920px, about 200 KB) for enlarged view and slideshows. A 4 MB original only loads when you click **GỐC** (Original) while viewing a photo, or when downloading
+- Each photo gets 3 extra WebP versions: **small** (600px wide, about 30 KB) for the grid, **phone** (1080px wide, about 100 KB) and **screen** (1920px, about 200 KB) for enlarged view and slideshows. A 4 MB original only loads when you click **Original** while viewing a photo, or when downloading
 - Phones automatically use the 1080px version, about 1/3 (landscape) to 1/2 (portrait) the weight of the 1920px one. Computers and tablets use the 1920px version
 - Viewing a photo: the small version already loaded is shown right away, then replaced by the sharp one once it finishes loading
 - While a photo loads, its grid cell shows the photo's dominant color instead of an empty box; off-screen photos aren't loaded yet (lazy loading)
@@ -110,15 +110,16 @@ The gallery is designed to run on a home computer on a home connection. The bott
 - Password login (hashed with scrypt), stays logged in for 30 days, temporary lockout after repeated wrong passwords
 - Each user has an ID and their own photo folder, and sees only their own photos
 - Admins can add and remove users, reset passwords and grant permissions
-- Shared photos: select photos and click **Công khai** (Public) so every account can view and download them (the **Ảnh chung** (Shared photos) tab); everything else stays private. Public photos remain in the owner's folder, and can be set back to **Riêng tư** (Private) at any time
-- Albums: create an album, select photos and click **Thêm vào album** (Add to album), choose a cover, rename, and run a slideshow per album. Albums only store a list of photos, so a photo can be in several albums, and deleting an album doesn't delete its photos
+- Shared photos: select photos and click **Public** so every account can view and download them (the **Shared photos** tab); everything else stays private. Public photos remain in the owner's folder, and can be set back to **Private** at any time
+- Albums: create an album, select photos and click **Add to album**, choose a cover, rename, and run a slideshow per album. Albums only store a list of photos, so a photo can be in several albums, and deleting an album doesn't delete its photos
 - Upload with a button, drag and drop, or paste (Ctrl+V); the capture date is read automatically from EXIF
 - Video viewing in all three themes, with quality that adapts to the network (see **Video**)
 - Photo grid grouped by year, 3D tilt on hover, ambient light color taken from the photo
-- Three themes, switched with the **Giao diện** (Appearance) button in the top bar: **Điện ảnh** (Cinema: dark background, 3D tilt), **Album giấy** (Paper album: light paper background, white photo frames, magazine-style type) and **Ô màu** (Color tiles: rounded tile grid, album sidebar, an "On this day" tile; a bottom navigation bar on phones). Your choice is remembered in the browser
+- Three themes, switched with the **Appearance** button in the top bar: **Cinema** (dark background, 3D tilt), **Paper album** (light paper background, white photo frames, magazine-style type) and **Color tiles** (rounded tile grid, album sidebar, an "On this day" tile; a bottom navigation bar on phones). Your choice is remembered in the browser
 - Favorites, search, sorting, enlarged view, download, delete
 - Photo zoom while viewing (up to 5x): mouse wheel, double-click, `+` `-` `0` keys, or pinch and double-tap on phones; drag to pan
 - Slideshow (`/slideshow.html`): 3D carousel, Ken Burns effect, background music, fullscreen, keyboard shortcuts
+- English and Vietnamese interface: choose on the login page or under **Account → Language**. The choice is saved per account and follows you across devices; accounts with no saved choice start in English
 
 ## Structure
 

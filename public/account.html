@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#07070a">
 <title>Tài khoản · My Gallery</title>
+<script src="/i18n.js"></script>
+<script src="/i18n/account.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600&family=Oswald:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,400;1,500&display=swap" rel="stylesheet">
@@ -105,6 +107,9 @@
   .user .acts { display: flex; flex-wrap: wrap; gap: 8px; }
   .reset { display: flex; gap: 8px; flex: 1 1 100%; }
   .reset input { height: 34px; max-width: 260px; }
+  /* Chọn ngôn ngữ */
+  .lang { display: flex; flex-wrap: wrap; gap: 8px; }
+  .lang .btn[aria-pressed="true"] { background: var(--text); color: #0b0b0d; border-color: transparent; font-weight: 600; }
   /* Ổ cứng ngoài / thư mục liên kết */
   .check { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0 0; font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--muted); cursor: pointer; }
   .check input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; accent-color: var(--gold); }
@@ -164,6 +169,15 @@
       <div><span>Mã người dùng</span><b id="meId"></b></div>
       <div><span>Quyền</span><b id="meRole"></b></div>
       <div><span>Ngày tạo</span><b id="meCreated"></b></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Ngôn ngữ</h2>
+    <p>Lưu theo tài khoản, áp dụng trên mọi thiết bị đăng nhập.</p>
+    <div class="lang" role="group" aria-label="Ngôn ngữ">
+      <button class="btn" type="button" data-lang="en" lang="en">English</button>
+      <button class="btn" type="button" data-lang="vi" lang="vi">Tiếng Việt</button>
     </div>
   </section>
 
@@ -228,23 +242,31 @@
   </section>
 </main>
 
+<script>i18n.apply()</script>
 <script>
 const $ = id => document.getElementById(id);
-const fmtDate = new Intl.DateTimeFormat('vi-VN', { day: 'numeric', month: 'long', year: 'numeric' });
+const fmtDate = new Intl.DateTimeFormat(i18n.locale, { day: 'numeric', month: 'long', year: 'numeric' });
 const fmtSize = b => b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : b < 1073741824 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1073741824).toFixed(2) + ' GB';
-const roleName = r => r === 'admin' ? 'Quản trị' : 'Người dùng';
+const roleName = r => t(r === 'admin' ? 'Quản trị' : 'Người dùng');
+// Tiếng Việt không có số nhiều; tiếng Anh tra khoá riêng "...#1" khi n = 1
+const count = (n, key) => t(n === 1 && i18n.lang === 'en' ? key + '#1' : key, n);
 let me = null;
 
 async function api(method, path, body) {
   const opts = { method };
   if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers = { 'Content-Type': 'application/json' }; }
   const res = await fetch(path, opts);
-  if (res.status === 401) { location.href = '/login.html?next=/account.html'; throw new Error('Cần đăng nhập'); }
+  if (res.status === 401) { location.href = '/login.html?next=/account.html'; throw new Error(t('Cần đăng nhập')); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Lỗi ${res.status}`);
+  if (!res.ok) throw new Error(t(data.error) || t('Lỗi {0}', res.status));
   return data;
 }
 function say(el, text, ok) { el.textContent = text; el.classList.toggle('ok', !!ok); }
+
+document.querySelectorAll('.lang button').forEach(b => {
+  b.setAttribute('aria-pressed', b.dataset.lang === i18n.lang);
+  b.onclick = () => { if (b.dataset.lang !== i18n.lang) i18n.set(b.dataset.lang); };
+});
 
 $('logout').onclick = async () => {
   await api('POST', '/api/logout').catch(() => {});
@@ -256,7 +278,7 @@ $('pwForm').onsubmit = async e => {
   try {
     await api('POST', '/api/password', { current: $('pwCur').value, next: $('pwNew').value });
     $('pwForm').reset();
-    say($('pwMsg'), 'Đã đổi mật khẩu.', true);
+    say($('pwMsg'), t('Đã đổi mật khẩu.'), true);
   } catch (err) { say($('pwMsg'), err.message); }
 };
 
@@ -265,7 +287,7 @@ $('addForm').onsubmit = async e => {
   try {
     const u = await api('POST', '/api/users', { username: $('addName').value, password: $('addPw').value, role: $('addRole').value });
     $('addForm').reset();
-    say($('addMsg'), `Đã tạo tài khoản ${u.username}.`, true);
+    say($('addMsg'), t('Đã tạo tài khoản {0}.', u.username), true);
     loadUsers();
   } catch (err) { say($('addMsg'), err.message); }
 };
@@ -275,16 +297,16 @@ function userRow(u) {
   row.className = 'user';
   const self = u.id === me.id;
   row.innerHTML = `
-    <div class="who"><b></b>${u.role === 'admin' ? '<span class="tag">Quản trị</span>' : ''}
+    <div class="who"><b></b>${u.role === 'admin' ? `<span class="tag">${t('Quản trị')}</span>` : ''}
       <small></small></div>
     <div class="acts">
-      <button class="btn small" data-act="reset">Đặt lại mật khẩu</button>
-      ${self ? '' : `<button class="btn small" data-act="role">${u.role === 'admin' ? 'Bỏ quyền quản trị' : 'Cấp quyền quản trị'}</button>
-      <button class="btn small danger" data-act="delete">Xoá</button>`}
+      <button class="btn small" data-act="reset">${t('Đặt lại mật khẩu')}</button>
+      ${self ? '' : `<button class="btn small" data-act="role">${t(u.role === 'admin' ? 'Bỏ quyền quản trị' : 'Cấp quyền quản trị')}</button>
+      <button class="btn small danger" data-act="delete">${t('Xoá')}</button>`}
     </div>
-    <form class="reset" hidden><input type="password" placeholder="Mật khẩu mới (ít nhất 8 ký tự)" autocomplete="new-password"><button class="btn small light" type="submit">Lưu</button></form>`;
-  row.querySelector('.who b').textContent = u.username + (self ? ' (bạn)' : '');
-  row.querySelector('.who small').textContent = `Mã ${u.id} · ${u.photos} ảnh · ${fmtSize(u.bytes)} · tạo ${fmtDate.format(u.created)}`;
+    <form class="reset" hidden><input type="password" placeholder="${t('Mật khẩu mới (ít nhất 8 ký tự)')}" autocomplete="new-password"><button class="btn small light" type="submit">${t('Lưu')}</button></form>`;
+  row.querySelector('.who b').textContent = self ? t('{0} (bạn)', u.username) : u.username;
+  row.querySelector('.who small').textContent = t('Mã {0} · {1} · {2} · tạo {3}', u.id, count(u.photos, '{0} ảnh'), fmtSize(u.bytes), fmtDate.format(u.created));
   const form = row.querySelector('.reset');
   row.querySelector('[data-act="reset"]').onclick = () => { form.hidden = !form.hidden; if (!form.hidden) form.querySelector('input').focus(); };
   form.onsubmit = async e => {
@@ -292,7 +314,7 @@ function userRow(u) {
     try {
       await api('PATCH', '/api/users/' + u.id, { password: form.querySelector('input').value });
       form.hidden = true; form.reset();
-      say($('addMsg'), `Đã đặt lại mật khẩu cho ${u.username}.`, true);
+      say($('addMsg'), t('Đã đặt lại mật khẩu cho {0}.', u.username), true);
     } catch (err) { say($('addMsg'), err.message); }
   };
   const roleBtn = row.querySelector('[data-act="role"]');
@@ -302,8 +324,8 @@ function userRow(u) {
   };
   const delBtn = row.querySelector('[data-act="delete"]');
   if (delBtn) delBtn.onclick = async () => {
-    if (!confirm(`Xoá tài khoản ${u.username} và toàn bộ ${u.photos} ảnh của người này? Không thể hoàn tác.`)) return;
-    try { await api('DELETE', '/api/users/' + u.id); say($('addMsg'), `Đã xoá ${u.username}.`, true); loadUsers(); }
+    if (!confirm(t('Xoá tài khoản {0} và toàn bộ {1} ảnh của người này? Không thể hoàn tác.', u.username, u.photos))) return;
+    try { await api('DELETE', '/api/users/' + u.id); say($('addMsg'), t('Đã xoá {0}.', u.username), true); loadUsers(); }
     catch (err) { say($('addMsg'), err.message); }
   };
   return row;
@@ -314,7 +336,7 @@ async function loadUsers() {
   $('users').replaceChildren(...list.map(userRow));
   // Chọn người sẽ thấy ảnh của thư mục liên kết
   const owner = $('linkOwner'), keep = owner.value || me.id;
-  owner.replaceChildren(...list.map(u => new Option(u.username + (u.id === me.id ? ' (bạn)' : ''), u.id)));
+  owner.replaceChildren(...list.map(u => new Option(u.id === me.id ? t('{0} (bạn)', u.username) : u.username, u.id)));
   owner.value = keep;
 }
 
@@ -326,8 +348,8 @@ function showPort(s) {
   $('portInput').value = '';
   const locked = !!s.envPort;
   $('portInput').disabled = $('portForm').querySelector('button').disabled = locked;
-  if (locked) say($('portMsg'), `Cổng đang được đặt bằng biến môi trường PORT=${s.envPort} khi chạy server. Chạy lại bằng "node server.js" (không có PORT) để đổi cổng ở đây.`);
-  $('portHint').innerHTML = `Dùng Tailscale Funnel thì sau khi đổi cổng, chạy trên máy chủ: <code>tailscale funnel --bg <span></span></code>. Lối tắt / file .bat có ghi cổng cũ thì sửa lại cho khớp.`;
+  if (locked) say($('portMsg'), t('Cổng đang được đặt bằng biến môi trường PORT={0} khi chạy server. Chạy lại bằng "node server.js" (không có PORT) để đổi cổng ở đây.', s.envPort));
+  $('portHint').innerHTML = t('Dùng Tailscale Funnel thì sau khi đổi cổng, chạy trên máy chủ: <code>tailscale funnel --bg <span></span></code>. Lối tắt / file .bat có ghi cổng cũ thì sửa lại cho khớp.');
   $('portHint').querySelector('span').textContent = s.port;
 }
 async function loadSettings() {
@@ -336,28 +358,28 @@ async function loadSettings() {
 $('portForm').onsubmit = async e => {
   e.preventDefault();
   const port = Number($('portInput').value);
-  if (!Number.isInteger(port) || port < 1024 || port > 65535) return say($('portMsg'), 'Cổng phải là số từ 1024 đến 65535');
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) return say($('portMsg'), t('Cổng phải là số từ 1024 đến 65535'));
   const now = $('portNow').textContent;
-  if (String(port) === now) return say($('portMsg'), `Gallery đang chạy ở cổng ${port} rồi.`, true);
-  let warn = `Chuyển gallery sang cổng ${port}? Địa chỉ ở cổng ${now} sẽ ngừng hoạt động sau vài giây.`;
-  if (viaTunnel()) warn += `\n\nBạn đang mở qua đường link công khai (Tailscale Funnel…). Link này sẽ mất kết nối cho tới khi chạy "tailscale funnel --bg ${port}" trên máy chủ.`;
+  if (String(port) === now) return say($('portMsg'), t('Gallery đang chạy ở cổng {0} rồi.', port), true);
+  let warn = t('Chuyển gallery sang cổng {0}? Địa chỉ ở cổng {1} sẽ ngừng hoạt động sau vài giây.', port, now);
+  if (viaTunnel()) warn += '\n\n' + t('Bạn đang mở qua đường link công khai (Tailscale Funnel…). Link này sẽ mất kết nối cho tới khi chạy "tailscale funnel --bg {0}" trên máy chủ.', port);
   if (!confirm(warn)) return;
-  say($('portMsg'), 'Đang mở cổng mới…', true);
+  say($('portMsg'), t('Đang mở cổng mới…'), true);
   try {
     const r = await api('PUT', '/api/settings', { port });
     showPort(r);
     if (location.port === String(r.old)) {
       const next = `${location.protocol}//${location.hostname}:${r.port}/account.html`;
-      say($('portMsg'), `Đã chuyển sang cổng ${r.port}, đang mở ${next}…`, true);
+      say($('portMsg'), t('Đã chuyển sang cổng {0}, đang mở {1}…', r.port, next), true);
       setTimeout(() => { location.href = next; }, 1200);
     } else {
-      say($('portMsg'), `Đã chuyển sang cổng ${r.port}. Nhớ chạy lại "tailscale funnel --bg ${r.port}" trên máy chủ để link công khai trỏ sang cổng mới.`, true);
+      say($('portMsg'), t('Đã chuyển sang cổng {0}. Nhớ chạy lại "tailscale funnel --bg {0}" trên máy chủ để link công khai trỏ sang cổng mới.', r.port), true);
     }
   } catch (err) { say($('portMsg'), err.message); }
 };
 
 // ---------- Ổ cứng ngoài (thư mục liên kết) ----------
-const fmtTime = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' });
+const fmtTime = new Intl.DateTimeFormat(i18n.locale, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' });
 const FOLDER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
 let browsing = null, linksTimer = 0;
 
@@ -366,7 +388,7 @@ async function browse(path) {
     browsing = await api('GET', '/api/links/browse' + (path ? '?path=' + encodeURIComponent(path) : ''));
   } catch (err) { say($('linkMsg'), err.message); return; }
   $('browser').hidden = false;
-  $('brPath').textContent = browsing.path ? `${browsing.path} · ${browsing.media} ảnh/video ở đây` : 'Chọn ổ đĩa';
+  $('brPath').textContent = browsing.path ? `${browsing.path} · ${count(browsing.media, '{0} ảnh/video ở đây')}` : t('Chọn ổ đĩa');
   $('brUp').disabled = browsing.parent === null;
   $('brPick').disabled = !browsing.path;
   const items = browsing.dirs.map(d => {
@@ -375,7 +397,7 @@ async function browse(path) {
     b.onclick = () => browse(d.path);
     li.append(b); return li;
   });
-  if (!items.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Không có thư mục con'; items.push(li); }
+  if (!items.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('Không có thư mục con'); items.push(li); }
   $('brList').replaceChildren(...items);
 }
 $('browseBtn').onclick = () => $('browser').hidden ? browse($('linkPath').value.trim()) : ($('browser').hidden = true);
@@ -384,11 +406,11 @@ $('brPick').onclick = () => { $('linkPath').value = browsing.path; $('browser').
 
 $('linkForm').onsubmit = async e => {
   e.preventDefault();
-  say($('linkMsg'), 'Đang liên kết…', true);
+  say($('linkMsg'), t('Đang liên kết…'), true);
   try {
     const l = await api('POST', '/api/links', { path: $('linkPath').value, name: $('linkName').value, uid: $('linkOwner').value, cache: $('linkDrive').checked ? 'drive' : 'local' });
     $('linkPath').value = $('linkName').value = '';
-    say($('linkMsg'), l.note || `Đã liên kết "${l.name}". Ảnh sẽ hiện dần trong gallery của ${l.owner} trong lúc đọc ổ.`, !l.note);
+    say($('linkMsg'), t(l.note) || t('Đã liên kết "{0}". Ảnh sẽ hiện dần trong gallery của {1} trong lúc đọc ổ.', l.name, l.owner), !l.note);
     loadLinks();
   } catch (err) { say($('linkMsg'), err.message); }
 };
@@ -400,28 +422,28 @@ function linkRow(l) {
   row.innerHTML = `
     <div class="who"><b></b><span class="dot"></span><small class="p"></small><small class="s"></small></div>
     <div class="acts">
-      <button class="btn small" data-act="scan">Quét lại</button>
-      ${admin ? `<button class="btn small" data-act="move">Đổi đường dẫn</button>
-      <button class="btn small danger" data-act="delete">Gỡ liên kết</button>` : ''}
+      <button class="btn small" data-act="scan">${t('Quét lại')}</button>
+      ${admin ? `<button class="btn small" data-act="move">${t('Đổi đường dẫn')}</button>
+      <button class="btn small danger" data-act="delete">${t('Gỡ liên kết')}</button>` : ''}
     </div>
-    <form class="reset" hidden><input spellcheck="false" autocomplete="off"><button class="btn small light" type="submit">Lưu</button></form>`;
+    <form class="reset" hidden><input spellcheck="false" autocomplete="off"><button class="btn small light" type="submit">${t('Lưu')}</button></form>`;
   row.querySelector('.who b').textContent = l.name;
   const dot = row.querySelector('.dot');
-  dot.textContent = l.scanning ? 'Đang đọc ổ…' : l.online ? 'Đang cắm' : 'Chưa cắm ổ';
+  dot.textContent = t(l.scanning ? 'Đang đọc ổ…' : l.online ? 'Đang cắm' : 'Chưa cắm ổ');
   dot.classList.add(l.scanning ? 'busy' : l.online ? 'on' : 'off');
   row.querySelector('.p').textContent = l.path;
-  const bits = [`${l.photos} ảnh`, `${l.videos} video`];
-  if (l.hidden) bits.push(`${l.hidden} đã ẩn`);
-  if (admin) bits.push('của ' + l.owner);
-  bits.push(l.cache === 'drive' ? 'ảnh nhỏ lưu trên ổ này' : 'ảnh nhỏ lưu trên máy chủ');
-  if (l.lastScan) bits.push('quét lúc ' + fmtTime.format(l.lastScan));
-  if (l.error) bits.push('lỗi: ' + l.error);
+  const bits = [count(l.photos, '{0} ảnh'), count(l.videos, '{0} video')];
+  if (l.hidden) bits.push(t('{0} đã ẩn', l.hidden));
+  if (admin) bits.push(t('của {0}', l.owner));
+  bits.push(t(l.cache === 'drive' ? 'ảnh nhỏ lưu trên ổ này' : 'ảnh nhỏ lưu trên máy chủ'));
+  if (l.lastScan) bits.push(t('quét lúc {0}', fmtTime.format(l.lastScan)));
+  if (l.error) bits.push(t('lỗi: {0}', l.error));
   row.querySelector('.s').textContent = bits.join(' · ');
 
   row.querySelector('[data-act="scan"]').onclick = async () => {
     try {
       const v = await api('POST', `/api/links/${l.id}/scan`);
-      say($('linkMsg'), v.online ? `Đang quét lại "${l.name}"…` : `Không thấy ${l.path}. Ổ đã cắm chưa? Nếu Windows đổi ký tự ổ, bấm "Đổi đường dẫn".`, v.online);
+      say($('linkMsg'), v.online ? t('Đang quét lại "{0}"…', l.name) : t('Không thấy {0}. Ổ đã cắm chưa? Nếu Windows đổi ký tự ổ, bấm "Đổi đường dẫn".', l.path), v.online);
       loadLinks();
     } catch (err) { say($('linkMsg'), err.message); }
   };
@@ -430,13 +452,13 @@ function linkRow(l) {
   if (moveBtn) moveBtn.onclick = () => { form.hidden = !form.hidden; if (!form.hidden) { form.querySelector('input').value = l.path; form.querySelector('input').focus(); } };
   form.onsubmit = async e => {
     e.preventDefault();
-    try { await api('PATCH', '/api/links/' + l.id, { path: form.querySelector('input').value }); say($('linkMsg'), 'Đã đổi đường dẫn, ảnh vẫn giữ nguyên.', true); loadLinks(); }
+    try { await api('PATCH', '/api/links/' + l.id, { path: form.querySelector('input').value }); say($('linkMsg'), t('Đã đổi đường dẫn, ảnh vẫn giữ nguyên.'), true); loadLinks(); }
     catch (err) { say($('linkMsg'), err.message); }
   };
   const delBtn = row.querySelector('[data-act="delete"]');
   if (delBtn) delBtn.onclick = async () => {
-    if (!confirm(`Gỡ liên kết "${l.name}"?\n\n${l.photos + l.videos} ảnh/video sẽ biến khỏi gallery (kể cả trong album). File trên ổ vẫn giữ nguyên, không bị xoá.`)) return;
-    try { await api('DELETE', '/api/links/' + l.id); say($('linkMsg'), `Đã gỡ "${l.name}".`, true); loadLinks(); }
+    if (!confirm(`${t('Gỡ liên kết "{0}"?', l.name)}\n\n${count(l.photos + l.videos, '{0} ảnh/video sẽ biến khỏi gallery (kể cả trong album).')} ${t('File trên ổ vẫn giữ nguyên, không bị xoá.')}`)) return;
+    try { await api('DELETE', '/api/links/' + l.id); say($('linkMsg'), t('Đã gỡ "{0}".', l.name), true); loadLinks(); }
     catch (err) { say($('linkMsg'), err.message); }
   };
   return row;
@@ -450,7 +472,7 @@ async function loadLinks() {
     // Người dùng thường chỉ xem trạng thái các ổ đã liên kết cho mình
     $('drives').hidden = !list.length;
     $('linkForm').hidden = true;
-    $('drivesIntro').textContent = 'Các thư mục trên ổ cứng ngoài mà quản trị viên đã liên kết vào gallery của bạn.';
+    $('drivesIntro').textContent = t('Các thư mục trên ổ cứng ngoài mà quản trị viên đã liên kết vào gallery của bạn.');
   }
   if (list.some(l => l.scanning)) linksTimer = setTimeout(loadLinks, 3000);
 }
@@ -459,7 +481,7 @@ async function loadLinks() {
   const s = await api('GET', '/api/status');
   if (!s.user) { location.href = '/login.html?next=/account.html'; return; }
   me = s.user;
-  $('hello').textContent = 'Xin chào, ' + me.username;
+  $('hello').textContent = t('Xin chào, {0}', me.username);
   $('meName').textContent = me.username;
   $('meId').textContent = me.id;
   $('meRole').textContent = roleName(me.role);
