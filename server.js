@@ -1561,7 +1561,8 @@ listenOn(PORT).then(s => {
   }
   if (!media.hasSharp) console.log('\nChưa cài "sharp" nên chưa có ảnh nhỏ (web sẽ chậm khi mạng yếu). Chạy: npm install');
   else if (!media.hasHeic) console.log('\nChưa cài "heic-decode" nên chưa xem được ảnh HEIC của iPhone. Chạy: npm install');
-  if (!video.hasFfmpeg) console.log('\nChưa có ffmpeg nên video chỉ phát bản gốc (nặng khi mạng yếu). Cài: winget install Gyan.FFmpeg rồi mở lại cửa sổ này');
+  if (!video.hasFfmpeg) console.log('\nChưa có ffmpeg nên video chỉ phát bản gốc (nặng khi mạng yếu). Chạy: npm install (tự tải ffmpeg, không cần cài vào máy)');
+  else if (video.ffmpegSource === 'npm') console.log('\nVideo: dùng ffmpeg đóng gói sẵn (node_modules), không cần cài ffmpeg vào máy');
   console.log('');
 
   setTimeout(scanImports, 1000);

@@ -1,19 +1,36 @@
 // Xử lý video: nhận dạng định dạng, đọc thông tin (ffprobe), tạo ảnh bìa và bản HLS nhiều mức chất lượng (ffmpeg).
 // HLS: video được cắt thành đoạn 4 giây ở 360p / 720p / 1080p / 1440p (2K) / 2160p (4K), trình xem tự đổi mức theo tốc độ mạng (như YouTube).
-// Cần ffmpeg + ffprobe (Windows: winget install Gyan.FFmpeg). Không có thì video vẫn xem được bằng file gốc.
+// Cần ffmpeg + ffprobe: dùng bản cài trên máy nếu có, không thì dùng bản đóng gói sẵn do npm install tải về
+// (@ffmpeg-installer/ffmpeg, @ffprobe-installer/ffprobe). Không có cả hai thì video vẫn xem được bằng file gốc.
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const fsp = fs.promises;
 const os = require('os');
 const path = require('path');
 
-const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
-const FFPROBE = process.env.FFPROBE_PATH ||
-  (process.env.FFMPEG_PATH ? path.join(path.dirname(FFMPEG), path.basename(FFMPEG).replace(/ffmpeg/i, 'ffprobe')) : 'ffprobe');
 const works = cmd => {
-  try { return spawnSync(cmd, ['-version'], { windowsHide: true, timeout: 15000 }).status === 0; } catch { return false; }
+  try { return !!cmd && spawnSync(cmd, ['-version'], { windowsHide: true, timeout: 15000 }).status === 0; } catch { return false; }
 };
-const hasFfmpeg = works(FFMPEG) && works(FFPROBE);
+const bundled = pkg => { try { return require(pkg).path; } catch { return null; } }; // gói npm chưa cài -> null
+
+// Chọn ffmpeg theo thứ tự: FFMPEG_PATH -> ffmpeg cài trên máy (PATH) -> bản đóng gói qua npm
+function pickTools() {
+  const envFf = process.env.FFMPEG_PATH;
+  if (envFf) {
+    const fp = process.env.FFPROBE_PATH ||
+      path.join(path.dirname(envFf), path.basename(envFf).replace(/ffmpeg/i, 'ffprobe'));
+    return { ffmpeg: envFf, ffprobe: fp, source: 'FFMPEG_PATH' };
+  }
+  if (works('ffmpeg') && works('ffprobe')) return { ffmpeg: 'ffmpeg', ffprobe: 'ffprobe', source: 'system' };
+  const ff = bundled('@ffmpeg-installer/ffmpeg'), fp = bundled('@ffprobe-installer/ffprobe');
+  if (ff && fp) return { ffmpeg: ff, ffprobe: fp, source: 'npm' };
+  return { ffmpeg: 'ffmpeg', ffprobe: 'ffprobe', source: null };
+}
+const tools = pickTools();
+const FFMPEG = tools.ffmpeg, FFPROBE = tools.ffprobe;
+const hasFfmpeg = !!tools.source && works(FFMPEG) && works(FFPROBE);
+// Nơi lấy ffmpeg (in ra khi khởi động): 'system' | 'npm' | 'FFMPEG_PATH' | null
+const ffmpegSource = hasFfmpeg ? tools.source : null;
 
 // Định dạng video nhận vào -> đuôi file lưu trên ổ đĩa
 const VIDEO_TYPES = {
@@ -188,5 +205,5 @@ function masterPlaylist(renditions) {
 }
 
 module.exports = {
-  hasFfmpeg, VIDEO_TYPES, QUALITIES, sniffVideo, plan, probe, makePoster, makeRendition, cancel, masterPlaylist,
+  hasFfmpeg, ffmpegSource, VIDEO_TYPES, QUALITIES, sniffVideo, plan, probe, makePoster, makeRendition, cancel, masterPlaylist,
 };

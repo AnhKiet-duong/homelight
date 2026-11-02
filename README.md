@@ -1,6 +1,6 @@
 # My Gallery
 
-A self-hosted photo and video gallery with a cinematic interface: upload photos and videos, browse them on a timeline, and replay memories in a 3D carousel slideshow. It has login accounts, and each person gets their own photo folder. All you need is Node.js; add `sharp` so photos load quickly on slow connections and `ffmpeg` so videos play smoothly at any network speed.
+A self-hosted photo and video gallery with a cinematic interface: upload photos and videos, browse them on a timeline, and replay memories in a 3D carousel slideshow. It has login accounts, and each person gets their own photo folder. All you need is Node.js; `npm install` adds `sharp` so photos load quickly on slow connections and a bundled `ffmpeg` so videos play smoothly at any network speed (nothing to install system-wide).
 
 The interface is available in English (the default) and Vietnamese. This README quotes button and menu names as they appear in English.
 
@@ -23,12 +23,13 @@ Other devices on the same Wi‑Fi network can open the IP address the server pri
 
 Upload videos the same way as photos (the **Upload photos** button, or drag and drop), or copy them into the import folder described below. MP4, MOV (iPhone), MKV, WebM, AVI, 3GP and MTS are accepted, up to 4 GB per video (change this with `VIDEO_MAX_MB=8192`). The recording date is read from the file's metadata.
 
-For smooth playback on slow connections, install **ffmpeg** on the server machine (once), then reopen the window running the server:
+For smooth playback on slow connections the server needs **ffmpeg**. You don't have to install it on the machine: `npm install` downloads a ready-made ffmpeg + ffprobe into `node_modules` (packages `@ffmpeg-installer/ffmpeg` and `@ffprobe-installer/ffprobe`, about 145 MB on Windows, only the build for your OS). This works on laptops where you can't install software or have no admin rights.
 
 ```bash
-winget install Gyan.FFmpeg      # Windows
-# macOS: brew install ffmpeg    Linux: sudo apt install ffmpeg
+npm install      # also fetches ffmpeg; then start the server as usual
 ```
+
+The server uses, in order: `FFMPEG_PATH` (if set), an ffmpeg already installed on the machine (`winget install Gyan.FFmpeg`, `brew install ffmpeg`, `sudo apt install ffmpeg`), then the bundled copy. At startup it prints a line when it is using the bundled copy. If the download fails, everything else still works and videos play the original file; run `npm install` again later.
 
 With ffmpeg, each video is converted to **HLS** (the way YouTube streams video): cut into 4-second segments at several quality levels, based on the video's short edge:
 
@@ -47,7 +48,7 @@ With ffmpeg, each video is converted to **HLS** (the way YouTube streams video):
 - The hls.js player loads from a CDN (so it doesn't use your home bandwidth); if the CDN is unreachable, the copy in `public/vendor/` is used. Safari and iPhone play HLS natively
 - Without ffmpeg (or until the first level is done), the original file is played, and you can still seek as far as it has downloaded. iPhone videos (HEVC) may not play in Chrome until ffmpeg finishes converting them
 - **Data saver** (in the **Appearance** menu, or the quality button during playback): turn it on when watching over 4G/5G. "Auto" video stays at 360p or below (about 350 MB/hour, compared with about 2 GB/hour at 1080p), videos don't autoplay when opened, only 12 seconds are buffered ahead, and enlarged photos and slideshows use the 1080px size. The setting is stored **per account** on the server, so turning it on from your phone also applies on other devices logged in to the same account
-- HLS copies live in `storage/users/<id>/thumbs/<video id>-hls/` and take about 30–60% of the original video's size (more for 4K). They can be deleted; the server recreates them on startup. If ffmpeg is installed elsewhere, set `FFMPEG_PATH`
+- HLS copies live in `storage/users/<id>/thumbs/<video id>-hls/` and take about 30–60% of the original video's size (more for 4K). They can be deleted; the server recreates them on startup. To use a specific ffmpeg, set `FFMPEG_PATH` (and `FFPROBE_PATH` if ffprobe is not next to it)
 
 ## Copying photos straight from disk
 
