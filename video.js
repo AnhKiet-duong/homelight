@@ -1,5 +1,6 @@
 // Xử lý video: nhận dạng định dạng, đọc thông tin (ffprobe), tạo ảnh bìa và bản HLS nhiều mức chất lượng (ffmpeg).
 // HLS: video được cắt thành đoạn 4 giây ở 360p / 720p / 1080p / 1440p (2K) / 2160p (4K), trình xem tự đổi mức theo tốc độ mạng (như YouTube).
+// Chế độ gọn nhẹ (mặc định, quản trị viên đổi trong trang Tài khoản): chỉ tạo 720p để đỡ tốn ổ đĩa.
 // Cần ffmpeg + ffprobe: dùng bản cài trên máy nếu có, không thì dùng bản đóng gói sẵn do npm install tải về
 // (@ffmpeg-installer/ffmpeg, @ffprobe-installer/ffprobe). Không có cả hai thì video vẫn xem được bằng file gốc.
 const { spawn, spawnSync } = require('child_process');
@@ -68,8 +69,12 @@ function sniffVideo(buf) {
   return null;
 }
 
-// Mức HLS cần tạo cho video kích thước w×h: luôn có 360p, mức cao hơn chỉ khi video gốc đủ nét
-function plan(w, h) {
+// Mức HLS cần tạo cho video kích thước w×h.
+// 'lite' (gọn nhẹ): chỉ một mức 720p (video gốc nhỏ hơn thì giữ cỡ gốc), cần nét hơn thì xem file gốc.
+// 'full' (đầy đủ): luôn có 360p, mức cao hơn chỉ khi video gốc đủ nét
+const LITE_LEVEL = 720;
+function plan(w, h, mode = 'full') {
+  if (mode === 'lite') return [LITE_LEVEL];
   const short = Math.min(w, h) || 0;
   return Object.keys(QUALITIES).map(Number).filter((q, i) => i === 0 || short >= q * 0.9);
 }
@@ -117,26 +122,38 @@ async function probe(file) {
   };
 }
 
-// Hàng đợi: tối đa một ffmpeg mỗi loại cùng lúc (ảnh bìa nhanh nên đi riêng, không phải chờ video dài đang chuyển đổi)
+// Hàng đợi: tối đa một ffmpeg mỗi loại cùng lúc (ảnh bìa nhanh nên đi riêng, không phải chờ video dài đang chuyển đổi).
+// slot (video trên ổ ngoài, do server cấp): chỉ lấy việc khi ổ đó rảnh, giữ ổ trong lúc làm; ổ bị rút / ngắt thì huỷ.
+// urgent (có người đang chờ xem) thì không chờ ổ rảnh
+const cancelledErr = () => Object.assign(new Error('Đã huỷ'), { cancelled: true });
 function lane() {
   const waiting = [];
   let busy = false;
   const pump = () => {
-    if (busy || !waiting.length) return;
+    if (busy) return;
+    const i = waiting.findIndex(j => !j.slot || j.urgent || j.slot.free());
+    if (i < 0) return;
     busy = true;
-    const { fn, resolve, reject } = waiting.shift();
-    fn().then(resolve, reject).finally(() => { busy = false; pump(); });
+    const { fn, resolve, reject, slot } = waiting.splice(i, 1)[0];
+    const release = slot ? slot.take() : () => {};
+    Promise.resolve().then(() => { if (slot && !slot.ok()) throw cancelledErr(); return fn(); })
+      .then(resolve, reject).finally(() => { busy = false; release(); pump(); });
   };
-  return (fn, urgent) => new Promise((resolve, reject) => {
-    urgent ? waiting.unshift({ fn, resolve, reject }) : waiting.push({ fn, resolve, reject });
+  const add = (fn, urgent, slot) => new Promise((resolve, reject) => {
+    const job = { fn, resolve, reject, urgent, slot };
+    urgent ? waiting.unshift(job) : waiting.push(job);
     pump();
   });
+  add.pump = pump;
+  return add;
 }
 const posterLane = lane(), hlsLane = lane();
+// Server gọi khi một ổ vừa rảnh: lấy tiếp việc đang chờ ổ đó
+const pump = () => { posterLane.pump(); hlsLane.pump(); };
 const children = new Map(); // key -> tiến trình ffmpeg đang chạy (để huỷ khi xoá video)
 
 // Ảnh bìa: một khung hình gần đầu video (bỏ qua giây đầu thường tối đen)
-function makePoster(src, out, info, urgent) {
+function makePoster(src, out, info, urgent, slot) {
   return posterLane(async () => {
     const size = info.w && info.h ? frameSize(info.w, info.h, Math.min(1080, Math.min(info.w, info.h))) : null;
     const grab = at => run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-ss', String(at), '-i', src, '-frames:v', '1',
@@ -145,14 +162,17 @@ function makePoster(src, out, info, urgent) {
     await grab(at);
     if (!(await fsp.stat(out + '.tmp.jpg').catch(() => null))?.size) await grab(0); // tua quá cuối file -> lấy khung đầu
     await fsp.rename(out + '.tmp.jpg', out);
-  }, urgent);
+  }, urgent, slot);
 }
 
 // Một mức HLS: <dir>/<q>/index.m3u8 + seg0000.ts … Tạo trong thư mục tạm rồi đổi tên khi xong,
-// nên mức nào có thư mục là đã hoàn chỉnh
-function makeRendition(src, dir, q, info, key, stillWanted = () => true) {
+// nên mức nào có thư mục là đã hoàn chỉnh.
+// src, dir: đường dẫn hoặc hàm trả về đường dẫn (tính lúc bắt đầu chạy). slot: xem lane()
+function makeRendition(src, dir, q, info, key, stillWanted = () => true, slot = null) {
   return hlsLane(async () => {
-    if (!stillWanted()) throw Object.assign(new Error('Đã huỷ'), { cancelled: true }); // video bị xoá khi đang chờ
+    if (!stillWanted()) throw cancelledErr(); // video bị xoá / ổ bị rút khi đang chờ
+    if (typeof src === 'function') src = src();
+    if (typeof dir === 'function') dir = dir();
     const s = QUALITIES[q], size = frameSize(info.w, info.h, q);
     const out = path.join(dir, String(q)), tmp = out + '.tmp';
     await fsp.rm(tmp, { recursive: true, force: true });
@@ -160,6 +180,7 @@ function makeRendition(src, dir, q, info, key, stillWanted = () => true) {
     const filters = [size ? `scale=${size.w}:${size.h}` : 'scale=trunc(iw/2)*2:trunc(ih/2)*2'];
     if (info.fps > s.fps + 1) filters.push(`fps=${s.fps}`);
     try {
+      if (!stillWanted()) throw cancelledErr(); // bị huỷ trong lúc chuẩn bị thư mục: không chạy ffmpeg nữa
       await run(FFMPEG, [
         '-hide_banner', '-nostdin', '-y', '-i', src,
         '-map', '0:v:0', '-map', '0:a:0?', '-vf', filters.join(','),
@@ -182,7 +203,7 @@ function makeRendition(src, dir, q, info, key, stillWanted = () => true) {
     let bytes = 0;
     for (const f of await fsp.readdir(out)) bytes += (await fsp.stat(path.join(out, f))).size;
     return { kbps: info.duration ? Math.round(bytes * 8 / info.duration / 1000) : s.maxrate, ...(size || {}) };
-  });
+  }, false, slot);
 }
 
 // Huỷ ffmpeg đang chạy cho video này (khi xoá video). Chờ tiến trình thoát để Windows nhả file
@@ -205,5 +226,5 @@ function masterPlaylist(renditions) {
 }
 
 module.exports = {
-  hasFfmpeg, ffmpegSource, VIDEO_TYPES, QUALITIES, sniffVideo, plan, probe, makePoster, makeRendition, cancel, masterPlaylist,
+  hasFfmpeg, ffmpegSource, VIDEO_TYPES, QUALITIES, LITE_LEVEL, sniffVideo, plan, probe, makePoster, makeRendition, cancel, masterPlaylist, pump,
 };

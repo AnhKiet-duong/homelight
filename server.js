@@ -78,6 +78,9 @@ const portOk = n => Number.isInteger(n) && n >= 1024 && n <= 65535;
 let settings = readJson(SETTINGS_FILE, {});
 const saveSettings = () => writeJson(SETTINGS_FILE, settings);
 let PORT = ENV_PORT || (portOk(settings.port) ? settings.port : DEFAULT_PORT);
+// Mức chất lượng video: 'lite' (mặc định: 720p + file gốc) | 'full' (360p – 4K, tốn ổ hơn nhiều)
+const VIDEO_MODES = ['lite', 'full'];
+let videoMode = VIDEO_MODES.includes(settings.videoMode) ? settings.videoMode : 'lite';
 
 // ---------- Người dùng ----------
 // users.json: [{ id, username, role: 'admin' | 'user', salt, hash, created }]
@@ -155,11 +158,11 @@ function photoView(p, url = p.url) {
   if (p.kind === 'video') {
     // hls: danh sách phát nhiều mức chất lượng (null khi chưa tạo xong mức nào -> phát file gốc)
     // processing: server còn đang tạo thêm mức chất lượng
-    const ready = Object.keys(hls || {});
+    const ready = Object.keys(readyHls(p));
     return {
       ...rest, url, thumb: url + '?s=sm', preview: url + '?s=md',
       hls: ready.length ? url + '/hls/master.m3u8' : null, qualities: ready.map(Number),
-      processing: video.hasFfmpeg && !vfail && video.plan(p.w, p.h).some(q => !ready.includes(String(q))),
+      processing: video.hasFfmpeg && !vfail && videoPlan(p).some(q => !ready.includes(String(q))),
     };
   }
   return { ...rest, url, thumb: url + '?s=sm', preview: p.type === 'image/gif' ? url : url + '?s=md' }; // GIF giữ ảnh động
@@ -169,8 +172,10 @@ function makeThumbs(uid, photo, urgent) {
   const key = uid + '/' + photo.id, isVideo = photo.kind === 'video';
   if (!(isVideo ? video.hasFfmpeg : media.hasSharp) || thumbFailed.has(key) || isOffline(photo)) return Promise.resolve(false);
   // Video: tạo ảnh bìa bằng ffmpeg trước, rồi làm ảnh nhỏ từ ảnh bìa như ảnh thường
-  const src = isVideo ? ensurePoster(uid, photo, urgent) : Promise.resolve(originalPath(uid, photo));
-  return src.then(file => media.hasSharp ? media.queueVariants(file, cacheDir(uid, photo), photo.id, urgent) : null).then(info => {
+  const l = photo.link && linkById(photo.link), slot = l ? driveSlot(l) : null; // ảnh trên ổ ngoài: chờ tới lượt dùng ổ
+  const from = originalPath(uid, photo);
+  const src = isVideo ? ensurePoster(uid, photo, urgent, slot) : Promise.resolve(from);
+  return src.then(file => media.hasSharp ? media.queueVariants(file, cacheDir(uid, photo), photo.id, urgent, slot) : null).then(info => {
     const p = getPhotos(uid).find(x => x.id === photo.id);
     if (p && info && (p.color !== info.color || (!p.w && info.w && !isVideo))) {
       p.color = info.color;
@@ -178,8 +183,9 @@ function makeThumbs(uid, photo, urgent) {
       savePhotosSoon(uid);
     }
     return true;
-  }, err => {
-    if (photo.link && !fs.existsSync(originalPath(uid, photo))) return false; // ổ vừa bị rút: cắm lại thì làm tiếp
+  }, async err => {
+    // Ổ vừa bị rút, hoặc cắm lại với ký tự khác trong lúc chờ: không phải lỗi, quét lại ổ thì làm tiếp
+    if (err.cancelled || isOffline(photo) || originalPath(uid, photo) !== from || (photo.link && !await linkReachable(photo.link))) return false;
     thumbFailed.add(key);
     console.error(`Không tạo được ảnh nhỏ cho ${photo.name}:`, err.message);
     return false;
@@ -217,27 +223,77 @@ const posterPath = (uid, p) => path.join(cacheDir(uid, p), `${p.id}-poster.jpg`)
 const hlsDir = (uid, p) => path.join(cacheDir(uid, p), `${p.id}-hls`);
 const fileExists = f => fsp.access(f).then(() => true, () => false);
 
-async function ensurePoster(uid, photo, urgent) {
+async function ensurePoster(uid, photo, urgent, slot) {
   const out = posterPath(uid, photo);
   if (!await fileExists(out)) {
     await fsp.mkdir(cacheDir(uid, photo), { recursive: true });
-    await video.makePoster(originalPath(uid, photo), out, photo, urgent);
+    await video.makePoster(originalPath(uid, photo), out, photo, urgent, slot);
   }
   return out;
+}
+
+// Mức HLS theo chế độ đang chọn; mức đã tạo nhưng không thuộc chế độ (vd. 1080p khi gọn nhẹ) thì không gửi cho trình xem
+const videoPlan = p => video.plan(p.w, p.h, videoMode);
+const levelAllowed = (p, q) => videoMode === 'full' || videoPlan(p).includes(Number(q));
+const readyHls = p => Object.fromEntries(Object.entries(p.hls || {}).filter(([q]) => levelAllowed(p, q)));
+
+async function dirSize(dir) {
+  let n = 0;
+  for (const e of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    const f = path.join(dir, e.name);
+    n += e.isDirectory() ? await dirSize(f) : (await fsp.stat(f).catch(() => ({ size: 0 }))).size;
+  }
+  return n;
+}
+// Xoá các mức HLS không thuộc chế độ đang chọn. Trả về số byte đã xoá
+async function pruneHls(uid, photo) {
+  if (photo.kind !== 'video' || videoMode === 'full' || isOffline(photo)) return 0; // ổ đang rút: dọn khi cắm lại
+  const dir = hlsDir(uid, photo), running = videoLevel.get(uid + '/' + photo.id);
+  const removed = new Set();
+  let freed = 0;
+  for (const name of await fsp.readdir(dir).catch(() => [])) {
+    const q = name.replace(/\.tmp$/, '');
+    if (levelAllowed(photo, q) || (running && name === running.q + '.tmp')) continue; // .tmp của mức đang tạo: ffmpeg tự dọn khi bị huỷ
+    const size = await dirSize(path.join(dir, name));
+    if (levelAllowed(photo, q)) continue; // vừa đổi lại sang đầy đủ trong lúc đếm dung lượng
+    await fsp.rm(path.join(dir, name), { recursive: true, force: true }).catch(() => {});
+    freed += size;
+    if (name === q) removed.add(q);
+  }
+  const drop = Object.keys(photo.hls || {}).filter(q => removed.has(q) || !levelAllowed(photo, q));
+  if (drop.length) {
+    for (const q of drop) delete photo.hls[q];
+    savePhotosSoon(uid);
+  }
+  return freed;
+}
+// Quản trị viên đổi chế độ: huỷ ffmpeg đang tạo mức không còn cần, xoá các mức thừa, rồi tạo các mức còn thiếu
+async function setVideoMode(mode) {
+  videoMode = settings.videoMode = mode;
+  await saveSettings();
+  await Promise.all([...videoLevel].filter(([, j]) => !levelAllowed(j.photo, j.q)).map(([key]) => video.cancel(key)));
+  let freed = 0;
+  for (const u of users) for (const p of getPhotos(u.id)) {
+    if (p.kind !== 'video') continue;
+    freed += await pruneHls(u.id, p);
+    processVideo(u.id, p);
+  }
+  return freed;
 }
 
 // Đọc thông tin, tạo ảnh bìa rồi lần lượt các mức HLS (360p trước để mạng chậm có cái xem sớm nhất).
 // Nhiều video cùng lúc: mọi video có 360p xong rồi mới tới 720p
 const videoJobs = new Set();
+const videoLevel = new Map(); // key -> { photo, q }: mức đang tạo, để huỷ khi đổi chế độ
 async function processVideo(uid, photo) {
   const key = uid + '/' + photo.id;
   if (!video.hasFfmpeg || videoJobs.has(key) || photo.vfail || isOffline(photo)) return;
   videoJobs.add(key);
-  const src = originalPath(uid, photo);
   const alive = () => getPhotos(uid).includes(photo);
   try {
     if (!photo.w || !photo.duration) {
-      const info = await video.probe(src);
+      const l = photo.link && linkById(photo.link), probe = () => video.probe(originalPath(uid, photo));
+      const info = await (l ? onDrive(l, probe) : probe());
       Object.assign(photo, { w: info.w, h: info.h, duration: info.duration, fps: info.fps });
       if (!photo.taken && info.taken) photo.taken = info.taken;
       savePhotosSoon(uid);
@@ -245,18 +301,39 @@ async function processVideo(uid, photo) {
     if (!photo.color || !await fileExists(media.hasSharp ? media.variantPath(cacheDir(uid, photo), photo.id, 'sm') : posterPath(uid, photo))) {
       await makeThumbs(uid, photo);
     }
-    for (const q of video.plan(photo.w, photo.h)) {
-      if (!alive()) return;
-      if (photo.hls && photo.hls[q] && await fileExists(path.join(hlsDir(uid, photo), String(q), 'index.m3u8'))) continue;
-      const t0 = Date.now();
-      const r = await video.makeRendition(src, hlsDir(uid, photo), q, photo, key, alive);
+    // Tính lại mức còn thiếu sau mỗi mức: quản trị viên có thể đổi chế độ giữa chừng
+    for (const done = new Set(); ;) {
+      if (!alive() || isOffline(photo)) return;
+      let q = null;
+      for (const c of videoPlan(photo)) {
+        if (done.has(c)) continue;
+        if (photo.hls && photo.hls[c] && await fileExists(path.join(hlsDir(uid, photo), String(c), 'index.m3u8'))) { done.add(c); continue; }
+        q = c; break;
+      }
+      if (q === null) break;
+      const t0 = Date.now(), wanted = () => alive() && !isOffline(photo) && levelAllowed(photo, q);
+      const l = photo.link && linkById(photo.link);
+      let r;
+      videoLevel.set(key, { photo, q });
+      try {
+        // Đường dẫn tính lúc bắt đầu chạy: ổ có thể được cắm lại với ký tự khác trong lúc chờ
+        r = await video.makeRendition(() => originalPath(uid, photo), () => hlsDir(uid, photo), q, photo, key, wanted, l ? driveSlot(l) : null);
+      } catch (err) {
+        if (err.cancelled && alive() && !levelAllowed(photo, q)) continue; // huỷ vì đổi chế độ: làm mức tiếp theo của chế độ mới
+        throw err;
+      } finally {
+        videoLevel.delete(key);
+      }
       if (!alive()) { await fsp.rm(hlsDir(uid, photo), { recursive: true, force: true }); return; }
+      if (isOffline(photo)) return; // ổ vừa được ngắt: không ghi thêm gì lên ổ, cắm lại thì làm lại mức này
+      if (!wanted()) { await fsp.rm(path.join(hlsDir(uid, photo), String(q)), { recursive: true, force: true }); continue; }
+      done.add(q);
       photo.hls = { ...photo.hls, [q]: r };
       await savePhotos(uid, getPhotos(uid));
       console.log(`Video ${photo.name}: xong ${q}p (${r.kbps} kbps, ${Math.round((Date.now() - t0) / 1000)} giây)`);
     }
   } catch (err) {
-    if (err.cancelled || (photo.link && !fs.existsSync(src))) return; // ổ vừa bị rút: cắm lại thì làm tiếp
+    if (err.cancelled || isOffline(photo) || (photo.link && !await linkReachable(photo.link))) return; // ổ vừa bị rút: cắm lại thì làm tiếp
     photo.vfail = true; // không thử lại mỗi lần khởi động; xoá dòng vfail trong photos.json để thử lại
     savePhotosSoon(uid);
     console.error(`Không xử lý được video ${photo.name}:`, err.message);
@@ -267,7 +344,7 @@ async function processVideo(uid, photo) {
 
 // /uploads/<file>/hls/master.m3u8 và /uploads/<file>/hls/<mức>/(index.m3u8|segNNNN.ts)
 async function serveHls(res, uid, photo, rest, cache) {
-  const ready = photo.hls || {};
+  const ready = readyHls(photo);
   if (rest.length === 1 && rest[0] === 'master.m3u8') {
     if (!Object.keys(ready).length) return send(res, 404, 'Video chưa có bản HLS');
     // Danh sách mức thay đổi khi server tạo thêm mức -> không cache lâu
@@ -450,6 +527,15 @@ async function packText(file, etag, enc) {
   return data;
 }
 
+// File đang gửi cho người xem; ngắt ổ thì đóng các file nằm trên ổ đó (xem stopDrive)
+const openReads = new Set();
+function readStream(file, opts) {
+  const s = fs.createReadStream(file, opts);
+  openReads.add(s);
+  s.on('close', () => openReads.delete(s));
+  return s;
+}
+
 async function serveFile(res, file, cache) {
   try {
     const stat = await fsp.stat(file);
@@ -475,7 +561,7 @@ async function serveFile(res, file, cache) {
         ...common, 'X-Content-Type-Options': 'nosniff',
       });
       if (res.req.method === 'HEAD') return res.end();
-      return pipeline(fs.createReadStream(file, { start, end }), res, () => {});
+      return pipeline(readStream(file, { start, end }), res, () => {});
     }
     const enc = isText ? pickEncoding(res.req) : null;
     const body = enc ? await packText(file, etag, enc) : null;
@@ -488,7 +574,7 @@ async function serveFile(res, file, cache) {
     });
     if (res.req.method === 'HEAD') return res.end();
     // pipeline: người xem tua/đóng video giữa chừng thì đóng file ngay (Windows không khoá file)
-    body ? res.end(body) : pipeline(fs.createReadStream(file), res, () => {});
+    body ? res.end(body) : pipeline(readStream(file), res, () => {});
   } catch {
     if (!res.headersSent) send(res, 404, 'Không tìm thấy');
   }
@@ -584,12 +670,18 @@ async function authApi(req, res, parts, session) {
   // /api/settings — cài đặt máy chủ, chỉ quản trị viên
   if (action === 'settings') {
     if (me.role !== 'admin') throw httpError(403, 'Chỉ quản trị viên mới làm được');
-    const view = () => ({ port: PORT, envPort: ENV_PORT, defaultPort: DEFAULT_PORT });
+    const view = () => ({ port: PORT, envPort: ENV_PORT, defaultPort: DEFAULT_PORT, videoMode });
     if (req.method === 'GET') return send(res, 200, view());
 
+    // PUT /api/settings { videoMode: 'lite' | 'full' } — gọn nhẹ thì xoá ngay các mức video khác 720p, trả về số byte đã xoá
     // PUT /api/settings { port } — mở cổng mới ngay, cổng cũ đóng sau vài giây
     if (req.method === 'PUT') {
-      const body = await readJsonBody(req);
+      const body = await readJsonBody(req) || {};
+      if (body.videoMode !== undefined) {
+        if (!VIDEO_MODES.includes(body.videoMode)) throw httpError(400, 'Tuỳ chọn không hợp lệ');
+        const freed = body.videoMode === videoMode ? 0 : await setVideoMode(body.videoMode);
+        return send(res, 200, { ...view(), freed });
+      }
       const port = Number(body.port);
       if (!portOk(port)) throw httpError(400, 'Cổng phải là số từ 1024 đến 65535');
       if (ENV_PORT) throw httpError(409, `Cổng đang được đặt bằng biến môi trường PORT=${ENV_PORT} khi chạy server. Bỏ biến đó rồi chạy lại server để đổi cổng ở đây.`);
@@ -1083,7 +1175,77 @@ const isDir = p => fsp.stat(p).then(s => s.isDirectory(), () => false);
 // Windows không phân biệt hoa thường trong đường dẫn
 const normPath = p => process.platform === 'win32' ? p.toLowerCase() : p;
 const within = (p, dir) => { const a = normPath(p), b = normPath(dir); return a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep); };
-for (const l of links) { try { linkState(l).online = fs.statSync(l.path).isDirectory(); } catch {} }
+// Thư mục có đọc được không; máy không phải Windows thì ghi nhớ luôn mã thiết bị (để biết thư mục nào cùng ổ)
+async function linkThere(l) {
+  const st = await fsp.stat(l.path).catch(() => null);
+  if (st && process.platform !== 'win32') linkState(l).dev = st.dev;
+  return !!st && st.isDirectory();
+}
+for (const l of links) {
+  try {
+    const st = fs.statSync(l.path);
+    linkState(l).online = st.isDirectory();
+    if (process.platform !== 'win32') linkState(l).dev = st.dev;
+  } catch {}
+}
+
+// Mỗi ổ chỉ làm một việc nặng (ảnh nhỏ, ảnh bìa, chuyển đổi video) một lúc: ổ cứng gắn ngoài bị đọc/ghi
+// nhiều luồng cùng lúc thì chậm hẳn đi và rất nóng. Việc nào đọc/ghi ổ cũng giữ "chỗ" của ổ đó trong lúc làm.
+// Các thư mục trên cùng ổ dùng chung một chỗ: Windows theo ký tự ổ ("d:\"), máy khác theo mã thiết bị
+const driveOf = l => process.platform === 'win32' ? normPath(path.parse(l.path).root)
+  : linkState(l).dev != null ? 'dev:' + linkState(l).dev : l.path;
+const driveLanes = new Map(); // ổ -> { active, idle: [resolve] }
+const cancelled = () => Object.assign(new Error('Đã huỷ'), { cancelled: true });
+function driveLane(l) {
+  const key = driveOf(l);
+  return driveLanes.get(key) || driveLanes.set(key, { active: 0, idle: [] }).get(key);
+}
+// Giữ chỗ của ổ; trả về hàm nhả chỗ. Ổ rảnh lại: báo các hàng đợi lấy việc tiếp
+function takeDrive(lane) {
+  lane.active++;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    if (--lane.active) return;
+    lane.idle.splice(0).forEach(f => f());
+    media.pump(); video.pump();
+  };
+}
+// Việc nhẹ của server (đọc danh sách thư mục, đầu file, ffprobe, dọn HLS thừa): làm ngay, không chờ việc nặng,
+// để ảnh hiện dần trong gallery cả khi ổ đang chuyển đổi một video dài; vẫn giữ chỗ để việc nặng mới không chen vào
+function onDrive(l, fn) {
+  const release = takeDrive(driveLane(l));
+  return Promise.resolve().then(() => { if (!linkState(l).online) throw cancelled(); return fn(); }).finally(release);
+}
+// Cho hàng đợi chung (ảnh nhỏ, ảnh bìa, HLS): chỉ lấy việc khi ổ của việc đó đang rảnh, nên một ổ đang bận
+// không làm tắc việc của ổ khác. ok() sai (ổ bị rút / ngắt, hoặc cắm lại với ký tự khác) thì việc bị huỷ
+function driveSlot(l) {
+  const key = driveOf(l), lane = driveLane(l);
+  return { free: () => !lane.active, take: () => takeDrive(lane), ok: () => linkState(l).online && driveOf(l) === key };
+}
+// Dừng mọi việc của thư mục liên kết (whole: của mọi thư mục trên cùng ổ): ngoại tuyến, huỷ ffmpeg đang chạy,
+// đóng các file đang gửi cho người xem. whole thì chờ việc đang dở (vd. một ảnh nhỏ) xong, để ổ không còn file nào mở
+async function stopDrive(l, whole = true) {
+  const same = whole ? links.filter(x => driveOf(x) === driveOf(l)) : [l];
+  const ids = new Set(same.map(x => x.id)), dirs = same.map(x => x.path);
+  for (const x of same) Object.assign(linkState(x), { online: false, resumed: false });
+  const closing = [...openReads].filter(s => dirs.some(d => within(String(s.path), d)))
+    .map(s => new Promise(resolve => { s.once('close', resolve); s.destroy(); }));
+  await Promise.all([...videoLevel].filter(([, j]) => ids.has(j.photo.link)).map(([key]) => video.cancel(key)));
+  await Promise.all(closing);
+  const lane = driveLane(l);
+  if (whole && lane.active) await new Promise(resolve => lane.idle.push(resolve));
+  return [...ids];
+}
+// Không đọc được thư mục liên kết: rút cả ổ thì dừng mọi việc trên ổ; ổ vẫn còn (thư mục bị đổi tên / xoá)
+// thì chỉ dừng thư mục đó, các thư mục khác trên ổ vẫn chạy
+async function linkGone(l) {
+  const others = links.filter(x => x !== l && driveOf(x) === driveOf(l));
+  const driveThere = process.platform === 'win32' ? await isDir(path.parse(l.path).root)
+    : (await Promise.all(others.map(x => isDir(x.path)))).some(Boolean);
+  return stopDrive(l, !driveThere);
+}
 
 function originalPath(uid, p) {
   const l = p.link && linkById(p.link);
@@ -1101,22 +1263,27 @@ function serveOriginal(res, uid, photo, cache) {
   return serveFile(res, originalPath(uid, photo), cache);
 }
 
-// Liệt kê ảnh/video (kể cả thư mục con). Ổ bị rút giữa chừng -> ném lỗi, để không tưởng nhầm là ảnh đã bị xoá
-async function walkLink(root, rel = '', out = new Map()) {
-  let entries;
-  try { entries = await fsp.readdir(path.join(root, rel), { withFileTypes: true }); }
-  catch (err) {
-    if (rel && (err.code === 'EPERM' || err.code === 'EACCES')) return out; // thư mục hệ thống không cho đọc
-    throw err;
-  }
-  for (const e of entries) {
-    if (e.name.startsWith('.') || SKIP_DIRS.test(e.name)) continue;
-    const r = rel ? path.join(rel, e.name) : e.name, full = path.join(root, r);
-    if (e.isDirectory()) { if (!within(full, ROOT) && !within(full, IMPORT_DIR)) await walkLink(root, r, out); }
-    else if (e.isFile() && MEDIA_EXT.test(e.name)) {
-      try { out.set(r, await fsp.stat(full)); } catch (err) { if (err.code !== 'ENOENT') throw err; }
+// Liệt kê ảnh/video (kể cả thư mục con). Ổ bị rút giữa chừng -> ném lỗi, để không tưởng nhầm là ảnh đã bị xoá.
+// gate: đọc từng thư mục khi tới lượt dùng ổ (không giữ ổ suốt lần quét), ổ bị ngắt thì dừng ở thư mục kế tiếp
+async function walkLink(root, gate = fn => fn(), rel = '', out = new Map()) {
+  const dirs = [];
+  await gate(async () => {
+    let entries;
+    try { entries = await fsp.readdir(path.join(root, rel), { withFileTypes: true }); }
+    catch (err) {
+      if (rel && (err.code === 'EPERM' || err.code === 'EACCES')) return; // thư mục hệ thống không cho đọc
+      throw err;
     }
-  }
+    for (const e of entries) {
+      if (e.name.startsWith('.') || SKIP_DIRS.test(e.name)) continue;
+      const r = rel ? path.join(rel, e.name) : e.name, full = path.join(root, r);
+      if (e.isDirectory()) { if (!within(full, ROOT) && !within(full, IMPORT_DIR)) dirs.push(r); }
+      else if (e.isFile() && MEDIA_EXT.test(e.name)) {
+        try { out.set(r, await fsp.stat(full)); } catch (err) { if (err.code !== 'ENOENT') throw err; }
+      }
+    }
+  });
+  for (const r of dirs) await walkLink(root, gate, r, out);
   return out;
 }
 
@@ -1166,20 +1333,24 @@ async function hideLinked(photo) {
 
 async function scanLink(l) {
   const st = linkState(l), u = users.find(x => x.id === l.uid);
-  if (st.scanning || !u) return;
+  if (!u) return;
+  if (st.scanning) { st.again = true; return; } // quét xong lần đang chạy thì quét lại (vd. vừa cắm lại ổ)
   st.scanning = true;
+  st.again = false;
   const uid = u.id, toAlbums = new Map();
   let changed = 0;
   try {
     let found;
-    try { found = await walkLink(l.path); }
+    try { found = await walkLink(l.path, fn => onDrive(l, fn)); }
     catch (err) {
+      if (err.cancelled) return; // ổ bị rút / được ngắt giữa lúc quét
       st.error = err.code === 'ENOENT' ? null : err.message;
       if (st.online) console.log(`Không đọc được "${l.name}" (${l.path}): ${err.message}`);
-      st.online = st.resumed = false;
+      await linkGone(l);
       return;
     }
-    st.online = true; st.error = null;
+    if (!st.online) return; // vừa bị ngắt / rút ra ngay khi quét xong
+    st.error = null;
     const mine = new Map(getPhotos(uid).filter(p => p.link === l.id).map(p => [p.rel, p]));
     // Ổ bỗng trống trơn (vd. cắm ổ khác vào cùng ký tự E:) -> không xoá gì, chờ lần sau
     if (found.size || !mine.size) {
@@ -1189,14 +1360,18 @@ async function scanLink(l) {
     }
     const hidden = new Set(l.hidden || []);
     for (const [rel, stat] of found) {
-      if (!linkById(l.id) || !users.includes(u)) return; // vừa gỡ liên kết / xoá tài khoản
+      if (!linkById(l.id) || !users.includes(u) || !st.online) return; // vừa gỡ liên kết / xoá tài khoản / rút ổ
       const old = mine.get(rel);
       if (hidden.has(rel) || (old && old.size === stat.size && old.mtime === Math.round(stat.mtimeMs))) continue;
       const skipKey = `${l.id}|${rel}|${stat.size}|${Math.round(stat.mtimeMs)}`;
       if (notMedia.has(skipKey)) continue;
       let p;
-      try { p = await linkedPhoto(l, rel, stat); }
-      catch (err) { console.error(`Không đọc được ${rel}:`, err.message); continue; }
+      try { p = await onDrive(l, () => linkedPhoto(l, rel, stat)); }
+      catch (err) {
+        if (err.cancelled || !await linkReachable(l.id)) return; // ổ bị rút: không thử từng file còn lại
+        console.error(`Không đọc được ${rel}:`, err.message);
+        continue;
+      }
       if (!p) { notMedia.add(skipKey); continue; }
       if (old) {
         // File bị thay bằng bản khác: giữ id, yêu thích, công khai, album; làm lại ảnh nhỏ / HLS
@@ -1223,9 +1398,13 @@ async function scanLink(l) {
     if (!st.resumed) {
       st.resumed = true;
       for (const p of getPhotos(uid)) {
+        if (!st.online) break;
         if (p.link !== l.id) continue;
-        if (p.kind === 'video') processVideo(uid, p);
-        else if (media.hasSharp && (!p.color || Object.keys(media.SIZES).some(s => !fs.existsSync(media.variantPath(cacheDir(uid, p), p.id, s))))) makeThumbs(uid, p);
+        if (p.kind === 'video') {
+          try { await onDrive(l, () => pruneHls(uid, p)); } catch { break; } // ổ bị rút / ngắt giữa chừng
+          processVideo(uid, p);
+        }
+        else if (media.hasSharp && (!p.color || await missingThumbs(uid, p))) makeThumbs(uid, p);
       }
     }
   } finally {
@@ -1241,8 +1420,14 @@ async function scanLink(l) {
     }
     if (changed) console.log(`"${l.name}": cập nhật ${changed} ảnh/video từ ${l.path}`);
     st.scanning = false;
+    if (st.again && st.online) setImmediate(() => scanLink(l));
     st.lastScan = Date.now();
   }
+}
+// Thiếu cỡ ảnh nhỏ nào không (kiểm tra không chặn server, ổ ngoài có thể có hàng chục nghìn ảnh)
+async function missingThumbs(uid, p) {
+  for (const s of Object.keys(media.SIZES)) if (!await fileExists(media.variantPath(cacheDir(uid, p), p.id, s))) return true;
+  return false;
 }
 const notMedia = new Set(); // file có đuôi ảnh nhưng không phải ảnh: không đọc lại mỗi lần quét
 
@@ -1255,13 +1440,19 @@ function scanLinks() {
   return linkScanning;
 }
 
+// Ký tự các ổ đang cắm (dò một lần mỗi lượt kiểm tra, không dò lại cho từng thư mục)
+async function driveLetters() {
+  const out = [];
+  for (const d of 'DEFGHIJKLMNOPQRSTUVWXYZ') if (await isDir(d + ':\\')) out.push(d);
+  return out;
+}
 // Windows có thể gán ký tự khác khi cắm lại ổ (E: -> F:): tìm dấu .homelight/link.json trên các ổ khác
-async function relocate(l) {
+async function relocate(l, letters = driveLetters) {
   if (process.platform !== 'win32' || l.cache !== 'drive' || !/^[a-z]:\\/i.test(l.path)) return false;
-  for (const d of 'DEFGHIJKLMNOPQRSTUVWXYZ') {
+  for (const d of await letters()) {
     const cand = d + l.path.slice(1);
     if (normPath(cand) === normPath(l.path)) continue;
-    const mark = readJson(path.join(cand, LINK_DIR, 'link.json'), null);
+    const mark = await fsp.readFile(path.join(cand, LINK_DIR, 'link.json'), 'utf8').then(JSON.parse).catch(() => null);
     if (mark && mark.id === l.id) {
       console.log(`"${l.name}" đã chuyển từ ${l.path} sang ${cand}`);
       l.path = cand;
@@ -1272,13 +1463,39 @@ async function relocate(l) {
   return false;
 }
 
-async function checkLinks() {
-  for (const l of [...links]) {
-    const st = linkState(l), was = st.online;
-    const on = await isDir(l.path) || await relocate(l);
-    if (on && !was) { console.log(`Đã cắm ổ chứa "${l.name}" (${l.path})`); st.online = true; scanLink(l); }
-    else if (!on && was) { console.log(`Ổ chứa "${l.name}" (${l.path}) đã rút ra: tạm ẩn ảnh trong đó`); st.online = st.resumed = false; }
-  }
+// Ổ còn cắm không: mỗi 10 giây, và ngay khi đọc/ghi trên ổ bị lỗi. Rút ra thì dừng mọi việc trên ổ đó
+let checking = null;
+function checkLinks() {
+  return checking ||= (async () => {
+    let letters = null;
+    const getLetters = () => (letters ||= driveLetters());
+    for (const l of [...links]) {
+      const st = linkState(l), was = st.online;
+      if (st.ejected) { if (!await isDir(l.path)) st.ejected = false; continue; } // đã ngắt: chờ rút ổ, hoặc bấm "Kết nối lại"
+      const on = await linkThere(l) || await relocate(l, getLetters);
+      if (on && !was) { console.log(`Đã cắm ổ chứa "${l.name}" (${l.path})`); st.online = true; scanLink(l); }
+      else if (!on && was) { console.log(`Không thấy "${l.name}" (${l.path}), ổ đã rút ra?: tạm ẩn ảnh, dừng mọi việc trên đó`); await linkGone(l); }
+    }
+  })().finally(() => { checking = null; });
+}
+// Đã ngắt ổ: mỗi giây xem ổ đã rút ra chưa, để rút rồi cắm lại ngay (trong 10 giây) vẫn được nhận lại
+let ejectTimer = null;
+function watchEjected() {
+  if (ejectTimer) return;
+  ejectTimer = setInterval(async () => {
+    const ejected = links.filter(l => linkState(l).ejected);
+    if (!ejected.length) { clearInterval(ejectTimer); ejectTimer = null; return; }
+    for (const l of ejected) if (!await isDir(l.path)) linkState(l).ejected = false;
+  }, 1000);
+  ejectTimer.unref();
+}
+// Đọc/ghi trên ổ ngoài bị lỗi: ổ còn không? Không còn thì dừng ngay, không chờ lần kiểm tra 10 giây
+async function linkReachable(id) {
+  const l = linkById(id);
+  if (!l) return false;
+  if (await isDir(l.path)) return true;
+  await checkLinks();
+  return false;
 }
 
 // Ghi dấu và thư mục cache lên ổ ngoài; ổ chỉ đọc được -> trả về false (dùng cache trên máy)
@@ -1313,7 +1530,7 @@ function linkView(l) {
   for (const p of owner ? getPhotos(owner.id) : []) if (p.link === l.id) p.kind === 'video' ? videos++ : photos++;
   return {
     id: l.id, name: l.name, path: l.path, cache: l.cache, uid: l.uid, owner: owner ? owner.username : null,
-    online: st.online, scanning: st.scanning, lastScan: st.lastScan, error: st.error,
+    online: st.online, ejected: !!st.ejected, scanning: st.scanning, lastScan: st.lastScan, error: st.error,
     photos, videos, hidden: (l.hidden || []).length, created: l.created,
   };
 }
@@ -1383,11 +1600,25 @@ async function linksApi(req, res, parts, url, me) {
   const l = linkById(id);
   if (!l || (!isAdmin && l.uid !== me.id)) throw httpError(404, 'Không tìm thấy thư mục liên kết');
 
-  // POST /api/links/:id/scan — quét lại ngay
+  // POST /api/links/:id/scan — quét lại ngay (sau khi ngắt ổ: kết nối lại mọi thư mục trên ổ đó)
   if (parts[3] === 'scan' && parts.length === 4 && req.method === 'POST') {
-    if (await isDir(l.path) || await relocate(l)) { linkState(l).online = true; scanLink(l); }
-    else linkState(l).online = false;
+    const same = linkState(l).ejected ? links.filter(x => driveOf(x) === driveOf(l)) : [l];
+    for (const x of same) {
+      linkState(x).ejected = false;
+      if (await linkThere(x) || await relocate(x)) { linkState(x).online = true; scanLink(x); }
+      else await linkGone(x); // dừng việc còn dở; cắm lại thì làm tiếp
+    }
     return send(res, 200, linkView(l));
+  }
+
+  // POST /api/links/:id/eject — ngắt ổ an toàn: dừng mọi việc và đóng mọi file trên ổ chứa thư mục này,
+  // để "Safely Remove" của Windows làm được. Rút ổ ra rồi cắm lại, hoặc bấm "Kết nối lại" là dùng tiếp
+  if (parts[3] === 'eject' && parts.length === 4 && req.method === 'POST') {
+    for (const x of links) if (driveOf(x) === driveOf(l)) linkState(x).ejected = true;
+    watchEjected();
+    const ids = await stopDrive(l);
+    console.log(`Đã ngắt ổ ${path.parse(l.path).root} (${ids.length} thư mục liên kết), có thể rút ổ ra`);
+    return send(res, 200, { ...linkView(l), drive: path.parse(l.path).root, links: ids.length });
   }
   if (parts.length > 3) throw httpError(404, 'Not found');
 
@@ -1401,7 +1632,7 @@ async function linksApi(req, res, parts, url, me) {
       const clash = links.find(x => x !== l && x.uid === l.uid && (within(p, x.path) || within(x.path, p)));
       if (clash) throw httpError(409, `Trùng với thư mục đã liên kết "${clash.name}"`);
       l.path = p;
-      linkState(l).online = true; linkState(l).resumed = false;
+      Object.assign(linkState(l), { online: true, resumed: false, ejected: false });
       if (l.cache === 'drive') await prepareDriveCache(l);
     }
     await saveLinks();
@@ -1573,6 +1804,12 @@ listenOn(PORT).then(s => {
   if (media.hasSharp) for (const u of users) for (const p of getPhotos(u.id)) if (p.kind !== 'video' && !p.link && (!p.color || missing(u.id, p))) makeThumbs(u.id, p);
   // Video chưa đủ ảnh bìa / mức HLS (vd. tải lên khi chưa cài ffmpeg, hoặc server tắt giữa chừng): làm tiếp
   if (video.hasFfmpeg) for (const u of users) for (const p of getPhotos(u.id)) if (p.kind === 'video' && !p.link) processVideo(u.id, p);
+  // Chế độ gọn nhẹ: xoá các mức video khác 720p còn sót (vd. tạo từ trước khi có tuỳ chọn này)
+  (async () => {
+    let freed = 0;
+    for (const u of users) for (const p of getPhotos(u.id)) if (p.kind === 'video' && !p.link) freed += await pruneHls(u.id, p);
+    if (freed) console.log(`Video gọn nhẹ (720p + bản gốc): đã xoá ${(freed / 1048576).toFixed(1)} MB các mức chất lượng khác`);
+  })();
   // Thư mục liên kết (ổ cứng ngoài): quét lúc khởi động, định kỳ, và ngay khi cắm ổ vào
   setTimeout(scanLinks, 2000);
   setInterval(scanLinks, LINK_SCAN_MS).unref();

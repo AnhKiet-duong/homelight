@@ -1269,7 +1269,7 @@
       <button class="opt" role="menuitemradio" data-theme="paper"><span class="sw paper"></span><span><b>Album giấy</b><small>Nền giấy sáng, khung ảnh trắng, chữ kiểu tạp chí</small></span><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg></button>
       <button class="opt" role="menuitemradio" data-theme="bento"><span class="sw bento"><i></i><i></i><i></i><i></i><i></i></span><span><b>Ô màu</b><small>Lưới ô bo tròn, thanh bên album, màu tươi</small></span><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg></button>
       <div class="sep"></div>
-      <button class="opt" role="menuitemcheckbox" id="saverOpt" aria-checked="false"><span class="sw saver"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg></span><span><b>Tiết kiệm dữ liệu</b><small>Lưu cho tài khoản này. Video tối đa 360p, không tự phát; ảnh xem cỡ nhỏ hơn</small></span><span class="tgl"></span></button>
+      <button class="opt" role="menuitemcheckbox" id="saverOpt" aria-checked="false"><span class="sw saver"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg></span><span><b>Tiết kiệm dữ liệu</b><small>Lưu cho tài khoản này. Video ở mức nhẹ nhất, không tự phát; ảnh xem cỡ nhỏ hơn</small></span><span class="tgl"></span></button>
       <div class="sep"></div>
       <div class="lang-row" role="group" aria-label="Ngôn ngữ"><b>Ngôn ngữ</b><span class="lang-seg"><button role="menuitemradio" data-lang="en">English</button><button role="menuitemradio" data-lang="vi">Tiếng Việt</button></span></div>
     </div>
@@ -2682,7 +2682,7 @@ function setDataSaver(on, fromAccount = false) {
   const p = view[current];
   if (isVideo(p)) { if (hls) hls.config.maxBufferLength = on ? 12 : 30; syncQ(p); }
   if (fromAccount) return;
-  toast(t(on ? 'Đã bật tiết kiệm dữ liệu cho tài khoản này: video tối đa 360p, ảnh cỡ nhỏ hơn' : 'Đã tắt tiết kiệm dữ liệu'));
+  toast(t(on ? 'Đã bật tiết kiệm dữ liệu cho tài khoản này: video ở mức nhẹ nhất, ảnh cỡ nhỏ hơn' : 'Đã tắt tiết kiệm dữ liệu'));
 }
 $('saverOpt').setAttribute('aria-checked', dataSaver);
 lbVid.addEventListener('error', () => {
@@ -2697,7 +2697,9 @@ function syncQ(p) {
   if (!isVideo(p) || view[current] !== p) return;
   const cur = hls && hls.currentLevel >= 0 && hls.levels[hls.currentLevel] ? qName(levelQ(hls.levels[hls.currentLevel])) : '';
   const playingOrig = !hls && lbVid.getAttribute('src') === p.url;
+  const one = p.hls && p.qualities?.length === 1 ? qName(p.qualities[0]) : ''; // gọn nhẹ: chỉ một mức (720p) + bản gốc
   const [short, long] = playingOrig ? [t('GỐC'), t('Bản gốc')]
+    : one ? [one, one]
     : vQuality === 'auto' || !hls ? [cur || 'AUTO', t(dataSaver ? 'Tiết kiệm dữ liệu' : 'Tự động') + (cur ? ` (${cur})` : '')]
     : [qName(vQuality), qName(vQuality)];
   $('lbQT').textContent = short;
@@ -2708,9 +2710,11 @@ function syncQ(p) {
 function buildQMenu(p) {
   const m = $('qMenu'), qs = [...(p.qualities || [])].sort((a, b) => b - a);
   const playingOrig = !hls && lbVid.getAttribute('src') === p.url;
-  const item = (val, label, note) => `<button role="menuitemradio" data-q="${val}" class="${(playingOrig ? val === 'orig' : String(vQuality) === String(val)) ? 'on' : ''}">${label}${note ? `<small>${note}</small>` : ''}</button>`;
+  const item = (val, label, note, on = playingOrig ? val === 'orig' : String(vQuality) === String(val)) => `<button role="menuitemradio" data-q="${val}" class="${on ? 'on' : ''}">${label}${note ? `<small>${note}</small>` : ''}</button>`;
+  // Chỉ một mức (chế độ gọn nhẹ): không cần "Tự động", chọn mức đó là phát HLS như bình thường
   m.innerHTML = `<div class="h">${t('Chất lượng')}</div>` +
-    (p.hls ? item('auto', t('Tự động'), dataSaver ? t('tối đa {0}', qName(Math.min(...qs))) : t('theo tốc độ mạng')) + qs.map(q => item(q, qName(q), q >= 1440 ? t('mạng nhanh') : q <= 360 ? t('nhẹ nhất') : '')).join('') : '') +
+    (p.hls && qs.length === 1 ? item('auto', qName(qs[0]), t('nhẹ nhất'), !playingOrig) :
+    p.hls ? item('auto', t('Tự động'), dataSaver ? t('tối đa {0}', qName(Math.min(...qs))) : t('theo tốc độ mạng')) + qs.map(q => item(q, qName(q), q >= 1440 ? t('mạng nhanh') : q <= 360 ? t('nhẹ nhất') : '')).join('') : '') +
     item('orig', t('Bản gốc'), fmtSize(p.size)) +
     (p.processing ? `<div class="note">${t('Server đang tạo thêm các mức chất lượng cho video này.')}</div>` : '') +
     `<button role="menuitemcheckbox" class="saver-row" data-saver aria-checked="${dataSaver}"><span class="tgl"></span>${t('Tiết kiệm dữ liệu')}</button>`;

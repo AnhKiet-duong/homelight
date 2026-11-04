@@ -128,20 +128,23 @@ async function makeVariants(src, dir, id) {
 
 // Hàng đợi: tạo tối đa 2 ảnh cùng lúc, cùng một ảnh thì chỉ tạo một lần.
 // urgent: có người đang chờ xem ảnh này -> chen lên đầu hàng (trước các ảnh cũ đang tạo dần)
+// slot (ảnh trên ổ ngoài, do server cấp): chỉ lấy ảnh khi ổ đó rảnh, giữ ổ trong lúc làm; ổ bị rút / ngắt thì huỷ.
+// Ảnh urgent không chờ ổ rảnh
 const jobs = new Map();   // key -> { promise, entry }
 const waiting = [];
 let running = 0;
-function queueVariants(src, dir, id, urgent = false) {
+function queueVariants(src, dir, id, urgent = false, slot = null) {
   if (!sharp) return Promise.resolve(null);
   const key = path.join(dir, id);
   let job = jobs.get(key);
   if (!job) {
-    const entry = { run: () => makeVariants(src, dir, id) };
+    const entry = { run: () => makeVariants(src, dir, id), urgent, slot };
     job = { entry, promise: new Promise((resolve, reject) => Object.assign(entry, { resolve, reject })) };
     jobs.set(key, job);
     job.promise.catch(() => {}).finally(() => jobs.delete(key));
     urgent ? waiting.unshift(entry) : waiting.push(entry);
   } else if (urgent) {
+    job.entry.urgent = true;
     const i = waiting.indexOf(job.entry);
     if (i > 0) waiting.unshift(...waiting.splice(i, 1));
   }
@@ -149,11 +152,17 @@ function queueVariants(src, dir, id, urgent = false) {
   return job.promise;
 }
 function pump() {
-  while (running < 2 && waiting.length) {
-    const { run, resolve, reject } = waiting.shift();
+  while (running < 2) {
+    const i = waiting.findIndex(e => !e.slot || e.urgent || e.slot.free());
+    if (i < 0) return;
+    const { run, resolve, reject, slot } = waiting.splice(i, 1)[0];
     running++;
-    run().then(resolve, reject).finally(() => { running--; pump(); });
+    const release = slot ? slot.take() : () => {};
+    Promise.resolve().then(() => {
+      if (slot && !slot.ok()) throw Object.assign(new Error('Đã huỷ'), { cancelled: true });
+      return run();
+    }).then(resolve, reject).finally(() => { running--; release(); pump(); });
   }
 }
 
-module.exports = { hasSharp: !!sharp, hasHeic: !!(sharp && heicDecode), SIZES, sniffType, exifDate, heicDate, imageSize, variantPath, queueVariants };
+module.exports = { hasSharp: !!sharp, hasHeic: !!(sharp && heicDecode), SIZES, sniffType, exifDate, heicDate, imageSize, variantPath, queueVariants, pump };

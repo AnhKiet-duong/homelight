@@ -31,7 +31,12 @@ npm install      # also fetches ffmpeg; then start the server as usual
 
 The server uses, in order: `FFMPEG_PATH` (if set), an ffmpeg already installed on the machine (`winget install Gyan.FFmpeg`, `brew install ffmpeg`, `sudo apt install ffmpeg`), then the bundled copy. At startup it prints a line when it is using the bundled copy. If the download fails, everything else still works and videos play the original file; run `npm install` again later.
 
-With ffmpeg, each video is converted to **HLS** (the way YouTube streams video): cut into 4-second segments at several quality levels, based on the video's short edge:
+With ffmpeg, each video is converted to **HLS** (the way YouTube streams video): cut into 4-second segments at one or more quality levels, based on the video's short edge.
+
+Admins choose how many levels under **Account → Video quality** (applies to every account):
+
+- **Compact** (default): only 720p (smaller videos keep their own size), plus the Original file. Uses the least disk space. Switching to Compact deletes the other levels straight away and shows how much space was freed; any leftover levels are also removed at startup
+- **Full**: every level in the table below that doesn't exceed the source. Adapts to the network speed, but uses several times more disk space. Switching to Full creates the missing levels gradually
 
 | Level | Max bitrate | Use for |
 | --- | --- | --- |
@@ -41,13 +46,13 @@ With ffmpeg, each video is converted to **HLS** (the way YouTube streams video):
 | 1440p (2K) | 9 Mbps | fast connections, viewing on the home network |
 | 2160p (4K) | 16 Mbps | viewing on the home network, 4K screens |
 
-- Only levels that don't exceed the source are created (a 1080p video gets 360p, 720p and 1080p; a 4K video gets all 5). 360p is always created first, so a video is watchable on a slow connection within seconds; higher levels follow gradually. With several videos at once, every video gets 360p before any moves on to 720p
-- The player picks a level from the measured network speed and **switches mid-playback** as the connection speeds up or slows down, without restarting. Small screens don't load 2K/4K. The quality button during playback lets you choose manually: Auto, a specific level, or Original (your choice is remembered)
+- In Full mode, only levels that don't exceed the source are created (a 1080p video gets 360p, 720p and 1080p; a 4K video gets all 5). 360p is always created first, so a video is watchable on a slow connection within seconds; higher levels follow gradually. With several videos at once, every video gets 360p before any moves on to 720p
+- The player picks a level from the measured network speed and **switches mid-playback** as the connection speeds up or slows down, without restarting. Small screens don't load 2K/4K. The quality button during playback lets you choose manually: Auto, a specific level, or Original (your choice is remembered). In Compact mode it offers just 720p and Original
 - The cover image is taken from an early frame, then turned into thumbnails like any photo for the grid
 - ffmpeg runs at low priority, one video at a time, so the machine stays usable during conversion. A long 4K video can take several minutes; the server prints a line each time a level finishes
 - The hls.js player loads from a CDN (so it doesn't use your home bandwidth); if the CDN is unreachable, the copy in `public/vendor/` is used. Safari and iPhone play HLS natively
 - Without ffmpeg (or until the first level is done), the original file is played, and you can still seek as far as it has downloaded. iPhone videos (HEVC) may not play in Chrome until ffmpeg finishes converting them
-- **Data saver** (in the **Appearance** menu, or the quality button during playback): turn it on when watching over 4G/5G. "Auto" video stays at 360p or below (about 350 MB/hour, compared with about 2 GB/hour at 1080p), videos don't autoplay when opened, only 12 seconds are buffered ahead, and enlarged photos and slideshows use the 1080px size. The setting is stored **per account** on the server, so turning it on from your phone also applies on other devices logged in to the same account
+- **Data saver** (in the **Appearance** menu, or the quality button during playback): turn it on when watching over 4G/5G. "Auto" video stays at the lowest level (in Full mode 360p, about 350 MB/hour, compared with about 2 GB/hour at 1080p), videos don't autoplay when opened, only 12 seconds are buffered ahead, and enlarged photos and slideshows use the 1080px size. The setting is stored **per account** on the server, so turning it on from your phone also applies on other devices logged in to the same account
 - HLS copies live in `storage/users/<id>/thumbs/<video id>-hls/` and take about 30–60% of the original video's size (more for 4K). They can be deleted; the server recreates them on startup. To use a specific ffmpeg, set `FFMPEG_PATH` (and `FFPROBE_PATH` if ffprobe is not next to it)
 
 ## Copying photos straight from disk
@@ -67,8 +72,9 @@ To view photos and videos on an external drive without using space on your machi
 - Photos and videos are **read in place**, not copied. The original files are never modified, renamed or deleted; the delete button in the gallery only **hides** a photo
 - Subfolders become albums with the same name. Adding or removing photos on the drive updates the gallery automatically (rescanned every 5 minutes, or click **Rescan**)
 - Thumbnails and video HLS copies are stored on the drive itself by default, in a hidden `.homelight` folder (safe to delete; the gallery recreates it when needed). If the drive is read-only, or you untick this option, they're stored on the machine: about 0.4 MB per photo, and roughly 30–60% of the original size for video
-- **Unplugging the drive**: its photos are temporarily hidden from the gallery (albums, favorites and public status are kept). Plug it back in and they return within seconds. If Windows changes the drive letter (E: to F:), the server finds it on its own; if not, click **Change path**
-- The first time you link a drive with many photos, the server needs a while to read them and create thumbnails; photos appear in the gallery gradually. USB 2.0 and HDD drives are slower than SSDs
+- **Before unplugging**, click **Safely disconnect** next to the folder. The server stops all work on that drive (for every linked folder on it) and closes its files, so Windows' **Safely Remove** works. Pulling the drive out while the server is still writing thumbnails or video can freeze File Explorer for a while and may leave the drive needing a disk check. Plug it back in, or click **Reconnect**, to continue
+- **Unplugging the drive**: its photos are temporarily hidden from the gallery (albums, favorites and public status are kept), and the server stops working on that drive straight away. Plug it back in and they return within seconds. If Windows changes the drive letter (E: to F:), the server finds it on its own; if not, click **Change path**
+- The first time you link a drive with many photos, the server needs a while to read them and create thumbnails; photos appear in the gallery gradually. To keep the drive cool, the server does **one job at a time per drive** (scanning, thumbnails or video conversion), even when several folders on the same drive are linked. USB 2.0 and HDD drives are slower than SSDs
 - Only admins can link folders (because it allows reading the server's drives). The list is stored in `storage/links.json`
 - Formats: JPEG, PNG, GIF, WebP, AVIF, BMP, HEIC (iPhone), and the video formats listed above
 

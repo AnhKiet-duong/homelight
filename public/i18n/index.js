@@ -23,7 +23,7 @@ i18n.add({
   'Ô màu': 'Bento',
   'Lưới ô bo tròn, thanh bên album, màu tươi': 'Rounded tiles, album sidebar, bright colors',
   'Tiết kiệm dữ liệu': 'Data saver',
-  'Lưu cho tài khoản này. Video tối đa 360p, không tự phát; ảnh xem cỡ nhỏ hơn': 'Saved to this account. Video up to 360p, no autoplay; smaller photos',
+  'Lưu cho tài khoản này. Video ở mức nhẹ nhất, không tự phát; ảnh xem cỡ nhỏ hơn': 'Saved to this account. Video at the lightest quality, no autoplay; smaller photos',
   'Ngôn ngữ': 'Language',
 
   // Đầu trang của ba giao diện
@@ -214,7 +214,7 @@ i18n.add({
   'Không phát được bản HLS, chuyển sang file gốc': 'Could not play the stream. Switching to the original file.',
   'Video đang được tối ưu cho mạng chậm, tạm phát bản gốc': 'Optimizing this video for slow networks. Playing the original for now.',
   'Chưa lưu được tuỳ chọn vào tài khoản': 'Could not save this setting to your account',
-  'Đã bật tiết kiệm dữ liệu cho tài khoản này: video tối đa 360p, ảnh cỡ nhỏ hơn': 'Data saver on for this account: video up to 360p, smaller photos',
+  'Đã bật tiết kiệm dữ liệu cho tài khoản này: video ở mức nhẹ nhất, ảnh cỡ nhỏ hơn': 'Data saver on for this account: video at the lightest quality, smaller photos',
   'Đã tắt tiết kiệm dữ liệu': 'Data saver off',
   'Trình duyệt chưa phát được định dạng này, đợi server chuyển đổi xong rồi mở lại nhé': "Your browser can't play this format yet. Reopen it when the server finishes converting.",
   'Trình duyệt không phát được định dạng video này. Bấm Tải xuống để xem bằng máy': "Your browser can't play this video format. Tap Download to watch it on your device.",

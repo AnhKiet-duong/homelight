@@ -110,6 +110,15 @@
   /* Chọn ngôn ngữ */
   .lang { display: flex; flex-wrap: wrap; gap: 8px; }
   .lang .btn[aria-pressed="true"] { background: var(--text); color: #0b0b0d; border-color: transparent; font-weight: 600; }
+  /* Chất lượng video */
+  .modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+  .mode { padding: 14px 16px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); text-align: left; transition: background .25s, border-color .25s; }
+  .mode:hover { background: var(--surface-2); }
+  .mode b { display: block; font-weight: 600; }
+  .mode small { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; }
+  .mode[aria-pressed="true"] { border-color: rgba(255,194,122,.6); background: rgba(255,194,122,.08); }
+  .mode:disabled { opacity: .45; pointer-events: none; }
+  .mode:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   /* Ổ cứng ngoài / thư mục liên kết */
   .check { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0 0; font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--muted); cursor: pointer; }
   .check input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; accent-color: var(--gold); }
@@ -216,6 +225,16 @@
     </form>
     <p class="msg" id="portMsg" role="status"></p>
     <p class="hint" id="portHint"></p>
+  </section>
+
+  <section class="panel" id="videoPanel" hidden>
+    <h2>Chất lượng video</h2>
+    <p>Server chuyển video sang các mức nhẹ hơn để xem mượt qua mạng. Mỗi mức là một bản sao trên máy chủ, càng nhiều mức càng tốn ổ đĩa. Áp dụng cho mọi tài khoản.</p>
+    <div class="modes" role="group" aria-label="Chất lượng video">
+      <button class="mode" type="button" data-mode="lite"><b>Gọn nhẹ (mặc định)</b><small>720p và bản gốc. Tốn ít ổ đĩa nhất.</small></button>
+      <button class="mode" type="button" data-mode="full"><b>Đầy đủ</b><small>360p, 720p, 1080p, 2K, 4K và bản gốc. Tự đổi mức theo tốc độ mạng, nhưng tốn ổ đĩa gấp nhiều lần.</small></button>
+    </div>
+    <p class="msg" id="videoMsg" role="status"></p>
   </section>
 
   <section class="panel" id="drives" hidden>
@@ -353,7 +372,7 @@ function showPort(s) {
   $('portHint').querySelector('span').textContent = s.port;
 }
 async function loadSettings() {
-  try { showPort(await api('GET', '/api/settings')); } catch (err) { say($('portMsg'), err.message); }
+  try { const s = await api('GET', '/api/settings'); showPort(s); showVideoMode(s.videoMode); } catch (err) { say($('portMsg'), err.message); }
 }
 $('portForm').onsubmit = async e => {
   e.preventDefault();
@@ -377,6 +396,25 @@ $('portForm').onsubmit = async e => {
     }
   } catch (err) { say($('portMsg'), err.message); }
 };
+
+// ---------- Chất lượng video ----------
+const modeBtns = document.querySelectorAll('.mode');
+function showVideoMode(mode) { modeBtns.forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === mode)); }
+modeBtns.forEach(b => b.onclick = async () => {
+  const mode = b.dataset.mode;
+  if (b.getAttribute('aria-pressed') === 'true') return;
+  if (!confirm(t(mode === 'lite'
+    ? 'Chuyển sang gọn nhẹ? Các bản 360p, 1080p, 2K, 4K đã tạo sẽ bị xoá ngay để giải phóng ổ đĩa (file video gốc không bị ảnh hưởng). Video chưa có bản 720p sẽ được tạo dần.'
+    : 'Chuyển sang đầy đủ? Server sẽ tạo dần các mức 360p – 4K cho mọi video, dùng nhiều CPU và tốn ổ đĩa gấp nhiều lần.'))) return;
+  modeBtns.forEach(x => { x.disabled = true; });
+  say($('videoMsg'), t(mode === 'lite' ? 'Đang xoá các mức chất lượng khác…' : 'Đang áp dụng…'), true);
+  try {
+    const r = await api('PUT', '/api/settings', { videoMode: mode });
+    showVideoMode(r.videoMode);
+    say($('videoMsg'), mode === 'lite' ? t('Đã chuyển sang gọn nhẹ, giải phóng {0}.', fmtSize(r.freed)) : t('Đã chuyển sang đầy đủ. Server đang tạo dần các mức chất lượng.'), true);
+  } catch (err) { say($('videoMsg'), err.message); }
+  modeBtns.forEach(x => { x.disabled = false; });
+});
 
 // ---------- Ổ cứng ngoài (thư mục liên kết) ----------
 const fmtTime = new Intl.DateTimeFormat(i18n.locale, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' });
@@ -422,15 +460,16 @@ function linkRow(l) {
   row.innerHTML = `
     <div class="who"><b></b><span class="dot"></span><small class="p"></small><small class="s"></small></div>
     <div class="acts">
-      <button class="btn small" data-act="scan">${t('Quét lại')}</button>
+      <button class="btn small" data-act="scan">${t(l.ejected ? 'Kết nối lại' : 'Quét lại')}</button>
+      ${l.online ? `<button class="btn small" data-act="eject">${t('Ngắt ổ an toàn')}</button>` : ''}
       ${admin ? `<button class="btn small" data-act="move">${t('Đổi đường dẫn')}</button>
       <button class="btn small danger" data-act="delete">${t('Gỡ liên kết')}</button>` : ''}
     </div>
     <form class="reset" hidden><input spellcheck="false" autocomplete="off"><button class="btn small light" type="submit">${t('Lưu')}</button></form>`;
   row.querySelector('.who b').textContent = l.name;
   const dot = row.querySelector('.dot');
-  dot.textContent = t(l.scanning ? 'Đang đọc ổ…' : l.online ? 'Đang cắm' : 'Chưa cắm ổ');
-  dot.classList.add(l.scanning ? 'busy' : l.online ? 'on' : 'off');
+  dot.textContent = t(l.ejected ? 'Đã ngắt, có thể rút ổ' : l.scanning ? 'Đang đọc ổ…' : l.online ? 'Đang cắm' : 'Chưa cắm ổ');
+  dot.classList.add(l.ejected ? 'off' : l.scanning ? 'busy' : l.online ? 'on' : 'off');
   row.querySelector('.p').textContent = l.path;
   const bits = [count(l.photos, '{0} ảnh'), count(l.videos, '{0} video')];
   if (l.hidden) bits.push(t('{0} đã ẩn', l.hidden));
@@ -446,6 +485,18 @@ function linkRow(l) {
       say($('linkMsg'), v.online ? t('Đang quét lại "{0}"…', l.name) : t('Không thấy {0}. Ổ đã cắm chưa? Nếu Windows đổi ký tự ổ, bấm "Đổi đường dẫn".', l.path), v.online);
       loadLinks();
     } catch (err) { say($('linkMsg'), err.message); }
+  };
+  // Ngắt ổ: server dừng mọi việc và đóng mọi file trên ổ (mọi thư mục liên kết trên cùng ổ), rồi mới rút ra
+  const ejectBtn = row.querySelector('[data-act="eject"]');
+  if (ejectBtn) ejectBtn.onclick = async () => {
+    if (!confirm(t('Ngắt ổ chứa "{0}"? Server dừng tạo ảnh nhỏ và chuyển đổi video trên ổ này, ảnh trong ổ tạm ẩn khỏi gallery (mọi thư mục liên kết trên cùng ổ).', l.name))) return;
+    ejectBtn.disabled = true;
+    say($('linkMsg'), t('Đang dừng các việc trên ổ…'), true);
+    try {
+      const v = await api('POST', `/api/links/${l.id}/eject`);
+      say($('linkMsg'), t('Đã ngắt ổ {0}. Giờ có thể bấm "Safely Remove" (hoặc Eject) trên Windows rồi rút ổ ra. Cắm lại là ảnh tự hiện lại.', v.drive), true);
+      loadLinks();
+    } catch (err) { say($('linkMsg'), err.message); ejectBtn.disabled = false; }
   };
   const form = row.querySelector('.reset');
   const moveBtn = row.querySelector('[data-act="move"]');
@@ -486,7 +537,7 @@ async function loadLinks() {
   $('meId').textContent = me.id;
   $('meRole').textContent = roleName(me.role);
   $('meCreated').textContent = fmtDate.format(me.created);
-  if (me.role === 'admin') { $('admin').hidden = false; $('serverPanel').hidden = false; $('drives').hidden = false; loadUsers(); loadSettings(); }
+  if (me.role === 'admin') { $('admin').hidden = false; $('serverPanel').hidden = false; $('videoPanel').hidden = false; $('drives').hidden = false; loadUsers(); loadSettings(); }
   loadLinks();
 })();
 </script>
