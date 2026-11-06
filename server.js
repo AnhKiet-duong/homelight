@@ -11,6 +11,8 @@ const { promisify } = require('util');
 const { pipeline, Transform } = require('stream');
 const media = require('./media');
 const video = require('./video');
+const backup = require('./backup');
+const exif = require('./exif');
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -28,6 +30,7 @@ const MAX_SIZE = 50 * 1024 * 1024; // 50 MB / ảnh
 const VIDEO_MAX_SIZE = (Number(process.env.VIDEO_MAX_MB) || 4096) * 1024 * 1024; // 4 GB / video (đổi: VIDEO_MAX_MB=8192)
 const SESSION_MS = 30 * 24 * 3600 * 1000; // đăng nhập giữ 30 ngày
 const LOGIN_MAX_FAILS = 10, LOGIN_LOCK_MS = 15 * 60 * 1000;
+const TRASH_DAYS = 30; // ảnh xoá nằm trong thùng rác bao lâu rồi mới xoá hẳn
 
 // Chỉ nhận các định dạng ảnh an toàn để hiển thị (không nhận SVG vì có thể chứa script)
 const IMAGE_TYPES = {
@@ -38,13 +41,17 @@ const IMAGE_TYPES = {
 const STATIC_TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.json': 'application/json',
-  '.ico': 'image/x-icon', '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json',
   ...Object.fromEntries(Object.entries(IMAGE_TYPES).map(([t, e]) => [e, t])),
   ...Object.fromEntries(Object.entries(video.VIDEO_TYPES).map(([t, e]) => [e, t])),
   '.m3u8': 'application/vnd.apple.mpegurl', '.ts': 'video/mp2t', '.jpg': 'image/jpeg',
 };
 // Trang xem được khi chưa đăng nhập
-const OPEN_PAGES = new Set(['/login.html', '/favicon.ico']);
+const OPEN_PAGES = new Set([
+  '/login.html', '/favicon.ico', '/vendor/hls.light.min.js', // hls.js: trang link chia sẻ cần (khách không đăng nhập)
+  '/manifest.webmanifest', '/sw.js', // ứng dụng cài được: trình duyệt tải manifest không kèm cookie
+  '/icons/icon.svg', '/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png',
+]);
 // i18n.js và từ điển public/i18n/*.js: trang đăng nhập cần. So khớp chặt để "/i18n/..%2f" không lọt qua
 const OPEN_I18N = /^\/i18n(\/[a-z]+)?\.js$/;
 const LANGS = ['en', 'vi'];
@@ -88,6 +95,19 @@ let users = readJson(USERS_FILE, []);
 const saveUsers = () => writeJson(USERS_FILE, users);
 const publicUser = u => ({ id: u.id, username: u.username, role: u.role, created: u.created });
 const USERNAME_RE = /^[a-z0-9._-]{3,32}$/;
+
+// ---------- Link chia sẻ album (xem không cần tài khoản, xem mục "Link chia sẻ" bên dưới) ----------
+// shares.json: [{ token, uid, albumId, created, expires (ms | null), pass: { salt, hash } | null, download, theme, views, last }]
+const SHARES_FILE = path.join(STORAGE_DIR, 'shares.json');
+let shares = readJson(SHARES_FILE, []);
+const saveShares = () => writeJson(SHARES_FILE, shares);
+// Khoá ký cookie mở khoá link có mật khẩu (tạo một lần, lưu trong settings.json)
+function ensureSecret() {
+  if (typeof settings.secret === 'string' && settings.secret.length >= 32) return;
+  settings.secret = crypto.randomBytes(32).toString('hex');
+  saveSettings();
+}
+ensureSecret();
 
 const scrypt = promisify(crypto.scrypt);
 async function hashPassword(password) {
@@ -153,8 +173,14 @@ function photoIndex(list, key) {
 
 // ---------- Ảnh nhỏ cho mạng chậm (xem media.js) ----------
 // Gửi cho trình duyệt: thumb (lưới ảnh), preview (xem phóng to), url (ảnh gốc), color (màu nền lúc đang tải)
+// Bỏ toạ độ GPS và nơi chụp (ảnh gửi cho người không phải chủ ảnh)
+function noLocation(v) {
+  if (v.exif && 'lat' in v.exif) { const { lat, lon, ...rest } = v.exif; v.exif = rest; }
+  delete v.place;
+  return v;
+}
 function photoView(p, url = p.url) {
-  const { hash, hls, vfail, rel, mtime, ...rest } = p;
+  const { hash, hls, vfail, rel, mtime, trashAlbums, trashCovers, dhash, ...rest } = p;
   if (p.kind === 'video') {
     // hls: danh sách phát nhiều mức chất lượng (null khi chưa tạo xong mức nào -> phát file gốc)
     // processing: server còn đang tạo thêm mức chất lượng
@@ -177,8 +203,9 @@ function makeThumbs(uid, photo, urgent) {
   const src = isVideo ? ensurePoster(uid, photo, urgent, slot) : Promise.resolve(from);
   return src.then(file => media.hasSharp ? media.queueVariants(file, cacheDir(uid, photo), photo.id, urgent, slot) : null).then(info => {
     const p = getPhotos(uid).find(x => x.id === photo.id);
-    if (p && info && (p.color !== info.color || (!p.w && info.w && !isVideo))) {
+    if (p && info && (p.color !== info.color || p.dhash !== info.dhash || (!p.w && info.w && !isVideo))) {
       p.color = info.color;
+      if (info.dhash) p.dhash = info.dhash; // để tìm ảnh trùng (xem duplicateGroups)
       if (!p.w && info.w && !isVideo) Object.assign(p, { w: info.w, h: info.h }); // ảnh nhập khi chưa có sharp
       savePhotosSoon(uid);
     }
@@ -287,7 +314,7 @@ const videoJobs = new Set();
 const videoLevel = new Map(); // key -> { photo, q }: mức đang tạo, để huỷ khi đổi chế độ
 async function processVideo(uid, photo) {
   const key = uid + '/' + photo.id;
-  if (!video.hasFfmpeg || videoJobs.has(key) || photo.vfail || isOffline(photo)) return;
+  if (!video.hasFfmpeg || videoJobs.has(key) || photo.vfail || photo.trashed || isOffline(photo)) return;
   videoJobs.add(key);
   const alive = () => getPhotos(uid).includes(photo);
   try {
@@ -303,7 +330,7 @@ async function processVideo(uid, photo) {
     }
     // Tính lại mức còn thiếu sau mỗi mức: quản trị viên có thể đổi chế độ giữa chừng
     for (const done = new Set(); ;) {
-      if (!alive() || isOffline(photo)) return;
+      if (!alive() || isOffline(photo) || photo.trashed) return; // vào thùng rác: khôi phục thì làm tiếp
       let q = null;
       for (const c of videoPlan(photo)) {
         if (done.has(c)) continue;
@@ -324,7 +351,10 @@ async function processVideo(uid, photo) {
       } finally {
         videoLevel.delete(key);
       }
-      if (!alive()) { await fsp.rm(hlsDir(uid, photo), { recursive: true, force: true }); return; }
+      if (!alive()) { // bị xoá trong lúc chạy (không xoá HLS nếu ảnh vẫn còn dưới object khác, vd. vừa khôi phục bản sao lưu)
+        if (!getPhotos(uid).some(x => x.id === photo.id)) await fsp.rm(hlsDir(uid, photo), { recursive: true, force: true });
+        return;
+      }
       if (isOffline(photo)) return; // ổ vừa được ngắt: không ghi thêm gì lên ổ, cắm lại thì làm lại mức này
       if (!wanted()) { await fsp.rm(path.join(hlsDir(uid, photo), String(q)), { recursive: true, force: true }); continue; }
       done.add(q);
@@ -770,6 +800,7 @@ async function authApi(req, res, parts, session) {
       if (user.id === me.id) throw httpError(400, 'Không thể tự xoá tài khoản của chính mình');
       users = users.filter(u => u.id !== user.id);
       await saveUsers();
+      if (shares.some(x => x.uid === user.id)) { shares = shares.filter(x => x.uid !== user.id); await saveShares(); }
       for (const l of links.filter(x => x.uid === user.id)) await removeLink(l);
       await dropSessions(user.id);
       photoCache.delete(user.id);
@@ -788,7 +819,10 @@ function publicPhotos(viewerId) {
   const list = [];
   for (const u of users) {
     for (const p of getPhotos(u.id)) {
-      if (p.public && !isOffline(p)) list.push({ ...photoView(p, `/shared/${u.id}/${p.file}`), fav: false, owner: u.username, mine: u.id === viewerId });
+      if (!p.public || p.trashed || isOffline(p)) continue;
+      const v = { ...photoView(p, `/shared/${u.id}/${p.file}`), fav: false, owner: u.username, mine: u.id === viewerId };
+      if (!v.mine) noLocation(v); // không lộ nơi chụp ảnh của người khác
+      list.push(v);
     }
   }
   return list;
@@ -796,7 +830,7 @@ function publicPhotos(viewerId) {
 function findPublicPhoto(ownerId, file) {
   if (!users.some(u => u.id === ownerId)) return null;
   const p = photoIndex(getPhotos(ownerId), 'file').get(file);
-  return p && p.public ? p : null;
+  return p && p.public && !p.trashed ? p : null;
 }
 
 // ---------- API: ảnh (của người đang đăng nhập) ----------
@@ -846,15 +880,17 @@ async function photosApi(req, res, parts, uid) {
       size: buf.length,
       w: Number(req.headers['x-width']) || 0,
       h: Number(req.headers['x-height']) || 0,
-      taken: Number(req.headers['x-taken']) || (heic ? await media.heicDate(path.join(imagesDir(uid), file)) : null), // ngày chụp đọc từ EXIF (nếu có)
+      taken: Number(req.headers['x-taken']) || (heic ? await media.heicDate(path.join(imagesDir(uid), file)) : media.exifDate(buf)), // ngày chụp đọc từ EXIF (nếu có)
       added: Date.now(),
       fav: false,
       public: false, // true: mọi tài khoản đều xem và tải được
     };
+    if (type === 'image/jpeg') setMeta(photo, exif.parseExif(buf)); // định dạng khác: đọc ở nền (scheduleMeta)
     const photos = getPhotos(uid); // lấy lại sau các await ở trên (nhận file có thể mất cả phút khi mạng chậm)
     photos.push(photo);
     await savePhotos(uid, photos);
     makeThumbs(uid, photo);
+    scheduleMeta();
     return send(res, 201, photoView(photo));
   }
 
@@ -874,25 +910,398 @@ async function photosApi(req, res, parts, uid) {
     return send(res, 200, photoView(photo));
   }
 
-  // DELETE /api/photos/:id — xoá luôn khỏi các album
+  // DELETE /api/photos/:id — chuyển vào thùng rác (xoá hẳn sau TRASH_DAYS ngày, xem /api/trash)
   if (req.method === 'DELETE') {
-    await savePhotos(uid, getPhotos(uid).filter(p => p.id !== id));
-    const albums = getAlbums(uid);
-    if (albums.some(a => a.photoIds.includes(id))) {
-      for (const a of albums) {
-        a.photoIds = a.photoIds.filter(x => x !== id);
-        if (a.cover === id) a.cover = null;
-      }
-      await saveAlbums(uid, albums);
-    }
-    await dropThumbs(uid, photo); // trước khi xoá file gốc: dừng ffmpeg đang đọc nó
-    // Ảnh trong thư mục liên kết: chỉ ẩn khỏi gallery, không bao giờ xoá file gốc trên ổ ngoài
-    if (photo.link) await hideLinked(photo);
-    else await fsp.unlink(path.join(imagesDir(uid), photo.file)).catch(() => {});
-    return send(res, 200, { ok: true });
+    const n = await trashPhotos(uid, [id]);
+    return send(res, 200, { ok: true, trashed: n });
   }
 
   send(res, 405, { error: 'Method not allowed' });
+}
+
+// ---------- Thông tin chụp: máy ảnh, thông số, GPS, nơi chụp (exif.js) ----------
+// p.exif chưa có = chưa đọc; {} = đã đọc mà không có gì. Đọc dần ở nền, mỗi lúc một file (chỉ đọc phần đầu file, nhanh)
+function setMeta(p, info) {
+  p.exif = info;
+  const pl = exif.place(info.lat, info.lon);
+  if (pl) p.place = pl; else delete p.place;
+}
+let metaRunning = false, metaAgain = false;
+function scheduleMeta() {
+  if (metaRunning) { metaAgain = true; return; }
+  metaRunning = true;
+  readMeta().catch(err => console.error('Lỗi khi đọc thông tin chụp:', err.message)).finally(() => {
+    metaRunning = false;
+    if (metaAgain) { metaAgain = false; scheduleMeta(); }
+  });
+}
+async function readMeta() {
+  for (const u of [...users]) {
+    let n = 0;
+    const changed = async () => { if (++n % 50 === 0) await savePhotos(u.id, getPhotos(u.id)); }; // ảnh hiện dần khi đọc nhiều
+    for (const p of getPhotos(u.id).filter(p => p.exif === undefined || (media.hasSharp && !p.dhash))) {
+      if (restoring) return;
+      if (isOffline(p) || !getPhotos(u.id).includes(p)) continue; // ảnh trên ổ đang rút: đọc khi cắm lại
+      const l = p.link && linkById(p.link), file = () => originalPath(u.id, p);
+      if (media.hasSharp && !p.dhash) { // vân tay ảnh (tìm ảnh trùng) từ ảnh nhỏ đã có; chưa có ảnh nhỏ thì để lần sau
+        const sm = () => media.variantPath(cacheDir(u.id, p), p.id, 'sm');
+        const h = await (l ? onDrive(l, () => media.dhash(sm())) : media.dhash(sm())).catch(() => null);
+        if (h && getPhotos(u.id).includes(p)) { p.dhash = h; await changed(); }
+      }
+      if (p.exif !== undefined) continue;
+      const read = async () => p.kind === 'video'
+        ? (video.hasFfmpeg ? exif.fromVideoTags((await video.probe(file())).tags) : {})
+        : exif.readImage(file());
+      let info;
+      try { info = await (l ? onDrive(l, read) : read()); }
+      catch (err) {
+        if (err.cancelled || isOffline(p)) continue;
+        info = {}; // file hỏng / không đọc được: không thử lại mãi
+      }
+      if (!getPhotos(u.id).includes(p) || p.exif !== undefined) continue; // bị xoá / thay trong lúc đọc
+      setMeta(p, info);
+      await changed();
+    }
+    if (n % 50) await savePhotos(u.id, getPhotos(u.id));
+  }
+}
+
+// ---------- Thùng rác: ảnh xoá được giữ TRASH_DAYS ngày rồi mới xoá hẳn ----------
+// Ảnh trong thùng rác vẫn nằm trong photos.json (thêm trashed: thời điểm xoá, trashAlbums: các album đã chứa nó),
+// bị ẩn khỏi mọi danh sách (visiblePhotos, ảnh công khai, link chia sẻ) nhưng chủ ảnh vẫn xem được ảnh nhỏ.
+async function trashPhotos(uid, ids) {
+  const want = new Set(ids), now = Date.now(), albums = getAlbums(uid);
+  let n = 0, albumsChanged = false;
+  for (const p of getPhotos(uid)) {
+    if (!want.has(p.id) || p.trashed) continue;
+    p.trashed = now;
+    p.trashAlbums = albums.filter(a => a.photoIds.includes(p.id)).map(a => a.id);
+    for (const a of albums) {
+      if (!a.photoIds.includes(p.id)) continue;
+      a.photoIds = a.photoIds.filter(x => x !== p.id);
+      if (a.cover === p.id) { a.cover = null; (p.trashCovers ||= []).push(a.id); }
+      albumsChanged = true;
+    }
+    if (p.kind === 'video') video.cancel(uid + '/' + p.id); // dừng chuyển đổi, khôi phục thì làm tiếp
+    n++;
+  }
+  if (n) await savePhotos(uid, getPhotos(uid));
+  if (albumsChanged) await saveAlbums(uid, getAlbums(uid));
+  return n;
+}
+async function restoreTrashed(uid, ids) {
+  const want = new Set(ids), albums = getAlbums(uid), back = [];
+  let albumsChanged = false;
+  for (const p of getPhotos(uid)) {
+    if (!want.has(p.id) || !p.trashed) continue;
+    for (const a of albums) {
+      if (!(p.trashAlbums || []).includes(a.id) || a.photoIds.includes(p.id)) continue;
+      a.photoIds.push(p.id);
+      if (!a.cover && (p.trashCovers || []).includes(a.id)) a.cover = p.id;
+      albumsChanged = true;
+    }
+    delete p.trashed;
+    delete p.trashAlbums;
+    delete p.trashCovers;
+    back.push(p);
+  }
+  if (back.length) await savePhotos(uid, getPhotos(uid));
+  if (albumsChanged) await saveAlbums(uid, getAlbums(uid));
+  for (const p of back) if (p.kind === 'video') processVideo(uid, p);
+  return back.length;
+}
+// Xoá hẳn: bỏ khỏi danh sách và album, xoá ảnh nhỏ / HLS, rồi xoá file gốc.
+// Ảnh trong thư mục liên kết: chỉ ẩn khỏi gallery, không bao giờ xoá file gốc trên ổ ngoài
+async function destroyPhotos(uid, list) {
+  if (!list.length) return 0;
+  const ids = new Set(list.map(p => p.id));
+  await savePhotos(uid, getPhotos(uid).filter(p => !ids.has(p.id)));
+  const albums = getAlbums(uid);
+  if (albums.some(a => a.photoIds.some(x => ids.has(x)) || ids.has(a.cover))) {
+    for (const a of albums) {
+      a.photoIds = a.photoIds.filter(x => !ids.has(x));
+      if (ids.has(a.cover)) a.cover = null;
+    }
+    await saveAlbums(uid, albums);
+  }
+  for (const photo of list) {
+    await dropThumbs(uid, photo); // trước khi xoá file gốc: dừng ffmpeg đang đọc nó
+    if (photo.link) await hideLinked(photo);
+    else await fsp.unlink(path.join(imagesDir(uid), photo.file)).catch(() => {});
+  }
+  return list.length;
+}
+// Xoá hẳn ảnh đã nằm trong thùng rác quá TRASH_DAYS ngày (mỗi 6 giờ, và lúc khởi động)
+async function purgeTrash() {
+  if (restoring) return;
+  const limit = Date.now() - TRASH_DAYS * 864e5;
+  for (const u of [...users]) {
+    const old = getPhotos(u.id).filter(p => p.trashed && p.trashed < limit);
+    if (old.length) { await destroyPhotos(u.id, old); console.log(`Thùng rác của ${u.username}: đã xoá hẳn ${old.length} ảnh/video quá ${TRASH_DAYS} ngày`); }
+  }
+}
+
+// /api/trash — GET: danh sách; POST { ids }: chuyển vào thùng rác; POST /restore { ids }; POST /purge { ids } hoặc { all: true }
+async function trashApi(req, res, parts, uid) {
+  const action = parts[2];
+  if (!action && req.method === 'GET') {
+    const items = getPhotos(uid).filter(p => p.trashed && !isOffline(p)).sort((a, b) => b.trashed - a.trashed)
+      .map(p => ({ ...photoView(p), purgeAt: p.trashed + TRASH_DAYS * 864e5 }));
+    return send(res, 200, { days: TRASH_DAYS, items });
+  }
+  if (req.method !== 'POST' || parts.length > 3) throw httpError(404, 'Not found');
+  const body = await readJsonBody(req) || {};
+  const ids = Array.isArray(body.ids) ? body.ids.filter(x => typeof x === 'string') : [];
+  if (!action) {
+    if (!ids.length) throw httpError(400, 'Chưa chọn ảnh nào');
+    return send(res, 200, { trashed: await trashPhotos(uid, ids) });
+  }
+  if (action === 'restore') {
+    if (!ids.length) throw httpError(400, 'Chưa chọn ảnh nào');
+    return send(res, 200, { restored: await restoreTrashed(uid, ids) });
+  }
+  if (action === 'purge') {
+    const want = new Set(ids);
+    const list = getPhotos(uid).filter(p => p.trashed && (body.all === true || want.has(p.id)));
+    if (!list.length && body.all !== true) throw httpError(400, 'Chưa chọn ảnh nào');
+    return send(res, 200, { purged: await destroyPhotos(uid, list) });
+  }
+  throw httpError(404, 'Not found');
+}
+
+// ---------- Ảnh trùng: giống hệt (cùng SHA-1) hoặc rất giống (vân tay dHash khác nhau tối đa SIMILAR_BITS bit) ----------
+const SIMILAR_BITS = 5;
+function popcount32(x) {
+  x -= (x >>> 1) & 0x55555555;
+  x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+  return Math.imul((x + (x >>> 4)) & 0x0F0F0F0F, 0x01010101) >>> 24;
+}
+const fpOf = h => [parseInt(h.slice(0, 8), 16), parseInt(h.slice(8, 16), 16)];
+function duplicateGroups(uid) {
+  const list = visiblePhotos(uid);
+  const parent = new Map(list.map(p => [p.id, p.id]));
+  const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent.set(a, b); };
+  const byHash = new Map();
+  for (const p of list) {
+    if (!p.hash) continue; // ảnh trên ổ ngoài không có SHA-1: chỉ so bằng vân tay
+    if (byHash.has(p.hash)) union(p.id, byHash.get(p.hash).id); else byHash.set(p.hash, p);
+  }
+  // Rất giống: chia 64 bit thành 8 dải 8 bit. Khác nhau <= 5 bit thì ít nhất 3 dải trùng hẳn, nên chỉ cần so
+  // các ảnh có chung một dải (khỏi so từng cặp trong cả thư viện)
+  const fps = [];
+  for (const p of list) {
+    if (!p.dhash) continue;
+    const [a, b] = fpOf(p.dhash), bits = popcount32(a) + popcount32(b);
+    if (bits < 4 || bits > 60) continue; // ảnh gần như một màu: vân tay không nói lên gì
+    fps.push({ p, a, b });
+  }
+  const bands = new Map();
+  for (const f of fps) for (let k = 0; k < 8; k++) {
+    const key = k + f.p.dhash.slice(k * 2, k * 2 + 2);
+    if (!bands.has(key)) bands.set(key, []);
+    bands.get(key).push(f);
+  }
+  const shape = p => p.w && p.h ? p.w / p.h : 0;
+  for (const bucket of bands.values()) {
+    if (bucket.length < 2 || bucket.length > 1500) continue;
+    for (let i = 0; i < bucket.length; i++) for (let j = i + 1; j < bucket.length; j++) {
+      const x = bucket[i], y = bucket[j];
+      if (popcount32(x.a ^ y.a) + popcount32(x.b ^ y.b) > SIMILAR_BITS) continue;
+      const r1 = shape(x.p), r2 = shape(y.p);
+      if (r1 && r2 && Math.abs(Math.log(r1 / r2)) > .15) continue; // khác hẳn tỉ lệ khung (ảnh dọc / ảnh ngang)
+      union(x.p.id, y.p.id);
+    }
+  }
+  const groups = new Map();
+  for (const p of list) {
+    const r = find(p.id);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(p);
+  }
+  // Ảnh nên giữ: nhiều điểm ảnh nhất, rồi file lớn nhất, rồi ảnh có trước
+  const better = (a, b) => ((b.w || 0) * (b.h || 0) - (a.w || 0) * (a.h || 0)) || ((b.size || 0) - (a.size || 0)) || (a.added - b.added);
+  return [...groups.values()].filter(g => g.length > 1).map(g => {
+    g.sort(better);
+    return { kind: g.every(p => p.hash && p.hash === g[0].hash) ? 'exact' : 'similar', items: g };
+  }).sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'exact' ? -1 : 1) || b.items.length - a.items.length);
+}
+// Bỏ ảnh trùng: ảnh giữ lại nhận album, ảnh bìa và yêu thích của các bản bị bỏ; các bản đó vào thùng rác (khôi phục được)
+async function resolveDuplicates(uid, list) {
+  const byId = new Map(visiblePhotos(uid).map(p => [p.id, p])), albums = getAlbums(uid), remove = [];
+  let albumsChanged = false, photosChanged = false;
+  for (const g of list) {
+    const keep = byId.get(g && g.keep);
+    const drop = (Array.isArray(g && g.remove) ? g.remove : []).map(id => byId.get(id)).filter(p => p && p !== keep);
+    if (!keep || !drop.length) continue;
+    for (const p of drop) {
+      if (p.fav && !keep.fav) { keep.fav = true; photosChanged = true; }
+      for (const a of albums) {
+        if (!a.photoIds.includes(p.id)) continue;
+        if (!a.photoIds.includes(keep.id)) a.photoIds.push(keep.id);
+        if (a.cover === p.id) a.cover = keep.id;
+        albumsChanged = true;
+      }
+      remove.push(p.id);
+    }
+  }
+  if (albumsChanged) await saveAlbums(uid, getAlbums(uid));
+  if (photosChanged) await savePhotos(uid, getPhotos(uid));
+  return trashPhotos(uid, remove);
+}
+// /api/duplicates — GET: các nhóm ảnh trùng; POST /resolve { groups: [{ keep, remove: [...] }] }
+async function duplicatesApi(req, res, parts, uid) {
+  if (!parts[2] && req.method === 'GET') {
+    const pending = media.hasSharp ? visiblePhotos(uid).filter(p => !p.dhash).length : 0;
+    const groups = duplicateGroups(uid).map(g => ({ kind: g.kind, items: g.items.map(p => ({ ...photoView(p), same: !!p.hash && p.hash === g.items[0].hash })) }));
+    return send(res, 200, { groups, pending });
+  }
+  if (parts[2] === 'resolve' && parts.length === 3 && req.method === 'POST') {
+    const body = await readJsonBody(req) || {};
+    if (!Array.isArray(body.groups) || !body.groups.length) throw httpError(400, 'Chưa chọn ảnh nào');
+    return send(res, 200, { trashed: await resolveDuplicates(uid, body.groups.slice(0, 5000)) });
+  }
+  throw httpError(404, 'Not found');
+}
+
+// ---------- Link chia sẻ album ----------
+// /s/<token>: trang share.html (ai có link cũng mở được, không cần tài khoản). Album luôn là bản hiện tại
+// (thêm / bớt ảnh trong album là link đổi theo). Không lộ vị trí chụp, tên tài khoản chỉ hiện tên đăng nhập.
+// Link có mật khẩu: /s/<token>/unlock đặt cookie (chỉ cho đường dẫn /s/<token>) = HMAC(secret, token + salt mật khẩu),
+// nên đổi / bỏ mật khẩu là mọi người phải nhập lại. Thu hồi = xoá khỏi shares.json.
+const SHARE_TOKEN_RE = /^[A-Za-z0-9_-]{20,40}$/;
+const SHARE_THEMES = ['cinema', 'paper', 'bento'];
+const SHARE_MAX = 200; // mỗi tài khoản
+const shareByToken = token => SHARE_TOKEN_RE.test(token || '') ? shares.find(x => x.token === token) || null : null;
+const shareAlbum = sh => users.some(u => u.id === sh.uid) ? getAlbums(sh.uid).find(a => a.id === sh.albumId) || null : null;
+const shareExpired = sh => !!sh.expires && sh.expires <= Date.now();
+const shareCookie = sh => 'sh_' + sh.token.slice(0, 12);
+const shareKey = sh => crypto.createHmac('sha256', settings.secret).update(sh.token + ':' + (sh.pass ? sh.pass.salt : '')).digest('base64url');
+function shareUnlocked(req, sh) {
+  if (!sh.pass) return true;
+  const v = cookies(req)[shareCookie(sh)] || '', k = shareKey(sh);
+  return v.length === k.length && crypto.timingSafeEqual(Buffer.from(v), Buffer.from(k));
+}
+function sharePhotos(sh, album) {
+  const ids = new Set(album.photoIds);
+  return visiblePhotos(sh.uid).filter(p => ids.has(p.id));
+}
+// Chỉ gửi những trường người xem cần (không có yêu thích, công khai, thông tin máy ảnh / vị trí, id ổ ngoài...)
+function shareView(sh, p) {
+  const v = photoView(p, `/s/${sh.token}/f/${encodeURIComponent(p.file)}`);
+  const out = { id: v.id, name: v.name, kind: v.kind, type: v.type, w: v.w, h: v.h, taken: v.taken, added: v.added, color: v.color, thumb: v.thumb, preview: v.preview };
+  if (p.kind === 'video') Object.assign(out, { duration: v.duration, hls: v.hls, qualities: v.qualities, url: v.url });
+  if (sh.download) Object.assign(out, { url: v.url, size: v.size });
+  return out;
+}
+const shareFails = new Map(); // ip|token -> { n, until }
+let shareSaveTimer = null;
+const saveSharesSoon = () => { if (!shareSaveTimer) shareSaveTimer = setTimeout(() => { shareSaveTimer = null; saveShares(); }, 5000); };
+
+async function shareRoute(req, res, url) {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  const [token, action, name, ...rest] = url.pathname.slice(3).split('/');
+  const sh = shareByToken(token);
+  if (!action) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
+    return serveFile(res, path.join(PUBLIC_DIR, 'share.html'), 'no-cache'); // link sai / hết hạn: trang tự báo
+  }
+  const album = sh && shareAlbum(sh);
+  if (!sh || !album) throw httpError(404, 'Link không tồn tại hoặc đã bị thu hồi');
+  if (shareExpired(sh)) throw httpError(410, 'Link này đã hết hạn');
+
+  if (action === 'info' && !name && req.method === 'GET') {
+    const owner = users.find(u => u.id === sh.uid);
+    const open = shareUnlocked(req, sh), list = open ? sharePhotos(sh, album) : [];
+    if (open) { sh.views = (sh.views || 0) + 1; sh.last = Date.now(); saveSharesSoon(); }
+    return send(res, 200, {
+      name: album.name, owner: owner.username, expires: sh.expires || null, theme: sh.theme, download: !!sh.download,
+      locked: !open, count: open ? list.length : null, photos: list.map(p => shareView(sh, p)),
+    });
+  }
+  if (action === 'unlock' && !name && req.method === 'POST') {
+    if (!sh.pass) return send(res, 200, { ok: true });
+    const key = (req.socket.remoteAddress || '') + '|' + sh.token, f = shareFails.get(key) || { n: 0, until: 0 };
+    if (f.until > Date.now()) throw httpError(429, 'Nhập sai quá nhiều lần, thử lại sau ít phút');
+    const body = await readJsonBody(req) || {};
+    const pass = typeof body.password === 'string' ? body.password.slice(0, 200) : '';
+    const ok = crypto.timingSafeEqual(await scrypt(pass, sh.pass.salt, 64), Buffer.from(sh.pass.hash, 'hex'));
+    if (!ok) {
+      f.n++; if (f.n >= LOGIN_MAX_FAILS) { f.n = 0; f.until = Date.now() + LOGIN_LOCK_MS; }
+      shareFails.set(key, f);
+      throw httpError(403, 'Sai mật khẩu');
+    }
+    shareFails.delete(key);
+    const maxAge = Math.max(60, Math.min(30 * 86400, sh.expires ? Math.floor((sh.expires - Date.now()) / 1000) : 30 * 86400));
+    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    return send(res, 200, { ok: true }, { 'Set-Cookie': `${shareCookie(sh)}=${shareKey(sh)}; Path=/s/${sh.token}; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}` });
+  }
+  if (action === 'f' && name && (req.method === 'GET' || req.method === 'HEAD')) {
+    if (!shareUnlocked(req, sh)) return send(res, 401, 'Cần mật khẩu');
+    let photo = null;
+    try { const file = decodeURIComponent(name); photo = sharePhotos(sh, album).find(p => p.file === file) || null; } catch { /* đường dẫn lỗi */ }
+    const isHls = rest[0] === 'hls';
+    if (!photo || (rest.length && !isHls)) return send(res, 404, 'Không tìm thấy');
+    if (isOffline(photo)) return send(res, 503, OFFLINE_MSG);
+    const cache = 'private, max-age=300'; // ngắn: chủ album có thể thu hồi link
+    if (isHls) return photo.kind === 'video' ? serveHls(res, sh.uid, photo, rest.slice(1), cache) : send(res, 404, 'Không tìm thấy');
+    const size = Object.hasOwn(media.SIZES, url.searchParams.get('s')) ? url.searchParams.get('s') : null;
+    // Không cho tải ảnh gốc: chỉ gửi ảnh cỡ vừa màn hình (video vẫn cần file gốc khi chưa có bản HLS)
+    if (!size && !sh.download && photo.kind !== 'video') return serveVariant(res, sh.uid, photo, 'md', cache);
+    return size ? serveVariant(res, sh.uid, photo, size, cache) : serveOriginal(res, sh.uid, photo, cache);
+  }
+  throw httpError(404, 'Not found');
+}
+
+// /api/shares — link chia sẻ của mình. GET: danh sách; POST { albumId, days, password?, download, theme };
+// PATCH /:token { days?, password? ('' = bỏ mật khẩu), download?, theme? }; DELETE /:token: thu hồi
+async function sharesApi(req, res, parts, uid) {
+  const view = sh => {
+    const a = shareAlbum(sh);
+    return { token: sh.token, url: '/s/' + sh.token, albumId: sh.albumId, albumName: a ? a.name : null, created: sh.created,
+      expires: sh.expires || null, expired: shareExpired(sh), hasPass: !!sh.pass, download: !!sh.download, theme: sh.theme, views: sh.views || 0, last: sh.last || null };
+  };
+  const expiresOf = days => {
+    if (!Number.isInteger(days) || days < 0 || days > 3650) throw httpError(400, 'Thời hạn không hợp lệ');
+    return days ? Date.now() + days * 864e5 : null;
+  };
+  const passOf = async v => {
+    if (v === '' || v == null) return null;
+    if (typeof v !== 'string' || v.length < 4 || v.length > 200) throw httpError(400, 'Mật khẩu link cần ít nhất 4 ký tự');
+    return hashPassword(v);
+  };
+  if (parts.length === 2 && req.method === 'GET') return send(res, 200, shares.filter(x => x.uid === uid).sort((a, b) => b.created - a.created).map(view));
+  if (parts.length === 2 && req.method === 'POST') {
+    const body = await readJsonBody(req) || {};
+    if (!getAlbums(uid).some(a => a.id === body.albumId)) throw httpError(404, 'Không tìm thấy album');
+    if (shares.filter(x => x.uid === uid).length >= SHARE_MAX) throw httpError(400, `Tối đa ${SHARE_MAX} link chia sẻ`);
+    const sh = {
+      token: crypto.randomBytes(18).toString('base64url'), uid, albumId: body.albumId, created: Date.now(),
+      expires: expiresOf(body.days ?? 0), pass: await passOf(body.password), download: body.download === true,
+      theme: SHARE_THEMES.includes(body.theme) ? body.theme : 'cinema', views: 0, last: null,
+    };
+    shares.push(sh);
+    await saveShares();
+    return send(res, 201, view(sh));
+  }
+  const sh = parts.length === 3 ? shares.find(x => x.uid === uid && x.token === parts[2]) : null;
+  if (!sh) throw httpError(404, 'Không tìm thấy link');
+  if (req.method === 'PATCH') {
+    const body = await readJsonBody(req) || {};
+    if (body.days !== undefined) sh.expires = expiresOf(body.days);
+    if (body.password !== undefined) sh.pass = await passOf(body.password);
+    if (typeof body.download === 'boolean') sh.download = body.download;
+    if (SHARE_THEMES.includes(body.theme)) sh.theme = body.theme;
+    await saveShares();
+    return send(res, 200, view(sh));
+  }
+  if (req.method === 'DELETE') {
+    shares = shares.filter(x => x !== sh);
+    await saveShares();
+    return send(res, 200, { ok: true });
+  }
+  throw httpError(405, 'Method not allowed');
 }
 
 // Video có thể nặng vài GB: ghi thẳng xuống ổ đĩa trong lúc nhận (không giữ trong RAM), tính hash luôn khi ghi
@@ -962,6 +1371,7 @@ async function uploadVideo(req, res, uid) {
   photos.push(photo);
   await savePhotos(uid, photos);
   processVideo(uid, photo);
+  scheduleMeta();
   return send(res, 201, photoView(photo));
 }
 
@@ -980,7 +1390,8 @@ function albumName(v) {
 function ownPhotoIds(v, photos) {
   if (v === undefined) return [];
   if (!Array.isArray(v)) throw httpError(400, 'Danh sách ảnh không hợp lệ');
-  return v.filter(id => photos.some(p => p.id === id));
+  const byId = photoIndex(photos, 'id');
+  return v.filter(id => { const p = byId.get(id); return p && !p.trashed; });
 }
 
 async function albumsApi(req, res, parts, uid) {
@@ -1030,6 +1441,7 @@ async function albumsApi(req, res, parts, uid) {
   // DELETE /api/albums/:id — chỉ xoá album, ảnh vẫn còn
   if (req.method === 'DELETE') {
     await saveAlbums(uid, getAlbums(uid).filter(a => a.id !== id));
+    if (shares.some(x => x.uid === uid && x.albumId === id)) { shares = shares.filter(x => !(x.uid === uid && x.albumId === id)); await saveShares(); } // link của album cũng mất
     return send(res, 200, { ok: true });
   }
 
@@ -1095,7 +1507,7 @@ async function importUser(u) {
   const hashes = new Set();
   let changed = 0;
   for (const p of getPhotos(uid)) {
-    if (p.link) continue; // ảnh trên ổ ngoài: không so trùng
+    if (p.link || p.trashed) continue; // ảnh trên ổ ngoài / trong thùng rác: không so trùng
     if (!p.hash && ++changed) p.hash = sha1(await fsp.readFile(path.join(imagesDir(uid), p.file)).catch(() => Buffer.alloc(0)));
     hashes.add(p.hash);
   }
@@ -1167,7 +1579,7 @@ async function importUser(u) {
       }
     }
   } finally {
-    if (changed) await savePhotos(uid, getPhotos(uid));
+    if (changed) { await savePhotos(uid, getPhotos(uid)); scheduleMeta(); }
     if (toAlbums.size) {
       const albums = getAlbums(uid);
       for (const [name, ids] of toAlbums) {
@@ -1185,6 +1597,7 @@ async function importUser(u) {
 
 let scanning = null;
 function scanImports() {
+  if (restoring) return Promise.resolve();
   if (!scanning) {
     scanning = (async () => {
       for (const u of [...users]) await importUser(u).catch(err => console.error('Lỗi nhập ảnh:', err.message));
@@ -1299,7 +1712,7 @@ function cacheDir(uid, p) {
   return l && l.cache === 'drive' ? path.join(l.path, LINK_DIR, 'cache') : thumbsDir(uid);
 }
 // Ảnh để hiện: bỏ ảnh của ổ đang rút ra
-const visiblePhotos = uid => getPhotos(uid).filter(p => !isOffline(p));
+const visiblePhotos = uid => getPhotos(uid).filter(p => !p.trashed && !isOffline(p)); // (bỏ cả ảnh trong thùng rác)
 const OFFLINE_MSG = 'Ổ đĩa chứa ảnh này đang không cắm vào máy chủ';
 function serveOriginal(res, uid, photo, cache) {
   if (isOffline(photo)) return send(res, 503, OFFLINE_MSG);
@@ -1318,7 +1731,7 @@ async function walkLink(root, gate = fn => fn(), rel = '', out = new Map()) {
       throw err;
     }
     for (const e of entries) {
-      if (e.name.startsWith('.') || SKIP_DIRS.test(e.name)) continue;
+      if (e.name.startsWith('.') || SKIP_DIRS.test(e.name) || e.name === backup.BACKUP_DIR) continue; // thư mục sao lưu của gallery
       const r = rel ? path.join(rel, e.name) : e.name, full = path.join(root, r);
       if (e.isDirectory()) { if (!within(full, ROOT) && !within(full, IMPORT_DIR)) dirs.push(r); }
       else if (e.isFile() && MEDIA_EXT.test(e.name)) {
@@ -1420,7 +1833,7 @@ async function scanLink(l) {
         // File bị thay bằng bản khác: giữ id, yêu thích, công khai, album; làm lại ảnh nhỏ / HLS
         await dropThumbs(uid, old);
         thumbFailed.delete(uid + '/' + old.id);
-        for (const k of ['hls', 'vfail', 'color']) delete old[k];
+        for (const k of ['hls', 'vfail', 'color', 'exif', 'place', 'dhash']) delete old[k];
         const { id, added, fav, public: pub, name, ...fresh } = p;
         Object.assign(old, fresh, { file: old.id + fresh.file.slice(id.length), url: '/uploads/' + old.id + fresh.file.slice(id.length) });
         indexes.delete(getPhotos(uid)); // tên file đổi
@@ -1449,9 +1862,10 @@ async function scanLink(l) {
         }
         else if (media.hasSharp && (!p.color || await missingThumbs(uid, p))) makeThumbs(uid, p);
       }
+      scheduleMeta(); // thông tin chụp của ảnh trên ổ (đọc khi ổ đang cắm)
     }
   } finally {
-    if (changed) await savePhotos(uid, getPhotos(uid));
+    if (changed) { await savePhotos(uid, getPhotos(uid)); scheduleMeta(); }
     if (toAlbums.size) {
       const albums = getAlbums(uid);
       for (const [name, ids] of toAlbums) {
@@ -1476,6 +1890,7 @@ const notMedia = new Set(); // file có đuôi ảnh nhưng không phải ảnh:
 
 let linkScanning = null;
 function scanLinks() {
+  if (restoring) return Promise.resolve();
   if (!linkScanning) {
     linkScanning = (async () => { for (const l of [...links]) if (linkState(l).online) await scanLink(l).catch(err => console.error('Lỗi quét thư mục liên kết:', err.message)); })()
       .finally(() => { linkScanning = null; });
@@ -1509,6 +1924,7 @@ async function relocate(l, letters = driveLetters) {
 // Ổ còn cắm không: mỗi 10 giây, và ngay khi đọc/ghi trên ổ bị lỗi. Rút ra thì dừng mọi việc trên ổ đó
 let checking = null;
 function checkLinks() {
+  if (restoring) return Promise.resolve();
   return checking ||= (async () => {
     let letters = null;
     const getLetters = () => (letters ||= driveLetters());
@@ -1564,6 +1980,8 @@ async function validLinkPath(v) {
   p = path.resolve(p);
   if (!await isDir(p)) throw httpError(400, 'Không tìm thấy thư mục này (ổ đã cắm chưa?)');
   if (within(p, ROOT) || within(p, IMPORT_DIR)) throw httpError(400, 'Đây là thư mục của chính gallery');
+  const bdir = backupConf().dir;
+  if (bdir && within(p, backup.rootOf(bdir))) throw httpError(400, 'Đây là thư mục sao lưu của gallery');
   return p;
 }
 
@@ -1692,14 +2110,183 @@ async function linksApi(req, res, parts, url, me) {
   throw httpError(405, 'Method not allowed');
 }
 
+// ---------- Sao lưu tự động + khôi phục (xem backup.js), chỉ quản trị viên ----------
+// settings.backup: { dir, freq: 'off' | 'daily' | 'weekly', hour: 0–23, keep: số bản giữ lại, last: { at, ok, error?, ... } }
+const BACKUP_FREQS = ['off', 'daily', 'weekly'];
+const backupConf = () => ({ dir: '', freq: 'off', hour: 3, keep: 10, last: null, ...settings.backup });
+const backupJob = { promise: null, progress: {}, reason: null };
+let restoring = false; // đang khôi phục: chặn mọi thay đổi khác
+
+// Chụp toàn bộ dữ liệu ngay lúc gọi (đồng bộ): các file trong một bản sao lưu luôn khớp nhau
+function stateNow() {
+  const clone = v => JSON.parse(JSON.stringify(v));
+  const photos = {}, albums = {};
+  for (const u of users) { photos[u.id] = clone(getPhotos(u.id)); albums[u.id] = clone(getAlbums(u.id)); }
+  const { backup: _b, ...rest } = settings;
+  return { users: clone(users), links: clone(links), shares: clone(shares), settings: clone(rest), photos, albums };
+}
+
+function startBackup(reason = 'manual') {
+  if (backupJob.promise) return backupJob.promise;
+  const conf = backupConf();
+  if (!conf.dir) return Promise.reject(httpError(400, 'Hãy chọn thư mục sao lưu'));
+  const state = stateNow(), t0 = Date.now();
+  backupJob.progress = { phase: 'start' };
+  backupJob.reason = reason;
+  backupJob.promise = (async () => {
+    try {
+      if (!await isDir(conf.dir)) throw new Error('Không thấy thư mục sao lưu (ổ đã cắm chưa?)');
+      const r = await backup.run(conf.dir, state, { originalOf: (uid, p) => path.join(imagesDir(uid), p.file), keep: conf.keep, reason, progress: backupJob.progress });
+      settings.backup = { ...backupConf(), last: { at: t0, ok: true, id: r.id, photos: r.photos, copied: r.copied, copiedBytes: r.copiedBytes, missing: r.missing, ms: Date.now() - t0 } };
+      console.log(`Sao lưu xong (${r.id}): ${r.photos} ảnh/video, chép thêm ${r.copied} file (${(r.copiedBytes / 1048576).toFixed(1)} MB) vào ${backup.rootOf(conf.dir)}`);
+      return r;
+    } catch (err) {
+      settings.backup = { ...backupConf(), last: { at: t0, ok: false, error: err.message } };
+      console.error('Sao lưu lỗi:', err.message);
+      throw err;
+    } finally {
+      await saveSettings();
+      backupJob.promise = null;
+    }
+  })();
+  backupJob.promise.catch(() => {});
+  return backupJob.promise;
+}
+
+// Lịch: kiểm tra mỗi 5 phút; máy tắt đúng giờ hẹn thì sao lưu ngay khi bật lại. Lỗi (vd. chưa cắm ổ) thì 1 giờ sau thử lại
+function backupDue() {
+  const c = backupConf();
+  if (c.freq === 'off' || !c.dir || backupJob.promise || restoring) return false;
+  const last = c.last ? c.last.at : 0;
+  if (last >= backup.lastSlot(c.freq, c.hour)) return false;
+  return !(c.last && !c.last.ok && Date.now() - last < 3600 * 1000);
+}
+
+async function validBackupDir(v) {
+  let p = typeof v === 'string' ? v.trim().replace(/^"(.*)"$/, '$1') : '';
+  if (!p) return '';
+  if (/^[a-z]:$/i.test(p)) p += '\\';
+  if (!path.isAbsolute(p)) throw httpError(400, 'Cần đường dẫn đầy đủ, vd. E:\\Anh');
+  p = path.resolve(p);
+  if (!await isDir(p)) throw httpError(400, 'Không tìm thấy thư mục này (ổ đã cắm chưa?)');
+  if (within(p, ROOT) || within(p, IMPORT_DIR)) throw httpError(400, 'Đây là thư mục của chính gallery');
+  const l = links.find(x => within(p, x.path));
+  if (l) throw httpError(400, `Thư mục này nằm trong thư mục liên kết "${l.name}", hãy chọn chỗ khác`);
+  return p;
+}
+
+// Khôi phục: sao lưu dữ liệu hiện tại trước (để còn quay lại được), chép lại file gốc còn thiếu,
+// rồi thay toàn bộ danh sách ảnh, album, tài khoản, thư mục liên kết, link chia sẻ bằng bản đã chọn.
+// Giữ nguyên: cổng, cài đặt sao lưu, phiên đăng nhập (phiên của tài khoản không còn tự hết hiệu lực)
+async function restoreBackup(id) {
+  const conf = backupConf();
+  if (!conf.dir) throw httpError(400, 'Hãy chọn thư mục sao lưu');
+  let snap;
+  try { snap = await backup.readSnapshot(conf.dir, id); } catch (err) { throw httpError(400, err.message); }
+  if (!snap.users.some(u => u.role === 'admin')) throw httpError(400, 'Bản sao lưu không có tài khoản quản trị');
+  if (restoring) throw httpError(409, 'Đang khôi phục, đợi chút nhé');
+  restoring = true;
+  try {
+    await Promise.all([scanning, linkScanning, checking].filter(Boolean).map(p => p.catch(() => {})));
+    if (backupJob.promise) await backupJob.promise.catch(() => {});
+    try { await startBackup('before-restore'); }
+    catch (err) { throw httpError(500, 'Không sao lưu được dữ liệu hiện tại trước khi khôi phục: ' + err.message); }
+    // Dừng video đang chuyển đổi (object ảnh cũ sắp bị thay)
+    await Promise.all([...videoLevel.keys()].map(k => video.cancel(k)));
+    for (let i = 0; i < 100 && videoJobs.size; i++) await new Promise(r => setTimeout(r, 200));
+    backupJob.progress = {};
+    const files = await backup.restoreFiles(conf.dir, snap, (uid, p) => path.join(imagesDir(uid), p.file), backupJob.progress);
+
+    const keep = { port: settings.port, backup: settings.backup };
+    settings = { ...snap.settings, ...keep };
+    if (keep.port === undefined) delete settings.port;
+    videoMode = VIDEO_MODES.includes(settings.videoMode) ? settings.videoMode : 'lite';
+    users = snap.users;
+    links = snap.links;
+    shares = Array.isArray(snap.shares) ? snap.shares : [];
+    ensureSecret();
+    photoCache.clear(); albumCache.clear(); linkStates.clear(); thumbFailed.clear(); notMedia.clear(); importStates.clear();
+    for (const u of users) {
+      await fsp.mkdir(imagesDir(u.id), { recursive: true });
+      await savePhotos(u.id, snap.photos[u.id] || []);
+      await saveAlbums(u.id, snap.albums[u.id] || []);
+    }
+    await Promise.all([saveUsers(), saveLinks(), saveSettings(), saveShares()]);
+    for (const l of links) await linkThere(l).then(on => { linkState(l).online = on; });
+    console.log(`Đã khôi phục bản sao lưu ${id}: ${users.length} tài khoản, chép lại ${files.copied} file gốc` + (files.missing ? `, thiếu ${files.missing} file` : ''));
+    return { id, users: users.length, copied: files.copied, missing: files.missing };
+  } finally {
+    restoring = false;
+    resumeWork();
+  }
+}
+
+async function backupApi(req, res, parts, me) {
+  if (me.role !== 'admin') throw httpError(403, 'Chỉ quản trị viên mới làm được');
+  const view = async () => {
+    const c = backupConf(), reachable = !!c.dir && await isDir(c.dir);
+    let linked = 0;
+    for (const u of users) for (const p of getPhotos(u.id)) if (p.link) linked++;
+    return {
+      dir: c.dir, root: c.dir ? backup.rootOf(c.dir) : null, freq: c.freq, hour: c.hour, keep: c.keep, last: c.last,
+      reachable, running: !!backupJob.promise, reason: backupJob.reason, restoring, progress: backupJob.progress,
+      next: c.freq !== 'off' && c.dir ? nextBackupAt(c) : null, linked,
+      snapshots: reachable ? await backup.listSnapshots(c.dir) : [],
+    };
+  };
+  if (parts.length === 2 && req.method === 'GET') return send(res, 200, await view());
+
+  // PUT /api/backup { dir?, freq?, hour?, keep? }
+  if (parts.length === 2 && req.method === 'PUT') {
+    const body = await readJsonBody(req) || {};
+    const c = backupConf(), next = { ...c };
+    if (body.dir !== undefined) next.dir = await validBackupDir(body.dir);
+    if (body.freq !== undefined) { if (!BACKUP_FREQS.includes(body.freq)) throw httpError(400, 'Tuỳ chọn không hợp lệ'); next.freq = body.freq; }
+    if (body.hour !== undefined) { if (!Number.isInteger(body.hour) || body.hour < 0 || body.hour > 23) throw httpError(400, 'Tuỳ chọn không hợp lệ'); next.hour = body.hour; }
+    if (body.keep !== undefined) { if (!Number.isInteger(body.keep) || body.keep < 1 || body.keep > 100) throw httpError(400, 'Số bản giữ lại từ 1 đến 100'); next.keep = body.keep; }
+    if (next.dir !== c.dir) next.last = null; // thư mục mới: sao lưu lần đầu theo lịch
+    settings.backup = { ...backupConf(), ...next };
+    await saveSettings();
+    return send(res, 200, await view());
+  }
+  // POST /api/backup/run — sao lưu ngay (chạy nền, trang hỏi lại tiến độ)
+  if (parts[2] === 'run' && parts.length === 3 && req.method === 'POST') {
+    if (restoring) throw httpError(409, 'Đang khôi phục, đợi chút nhé');
+    startBackup('manual').catch(() => {});
+    return send(res, 200, await view());
+  }
+  // POST /api/backup/restore { id }
+  if (parts[2] === 'restore' && parts.length === 3 && req.method === 'POST') {
+    const body = await readJsonBody(req) || {};
+    if (typeof body.id !== 'string') throw httpError(400, 'Không tìm thấy bản sao lưu này');
+    const r = await restoreBackup(body.id);
+    return send(res, 200, { ...r, ...await view() });
+  }
+  throw httpError(404, 'Not found');
+}
+// Lần tự sao lưu kế tiếp (để hiện trên trang Tài khoản)
+function nextBackupAt(c) {
+  const slot = backup.lastSlot(c.freq, c.hour);
+  if (!c.last || c.last.at < slot) return Date.now();
+  return slot + (c.freq === 'weekly' ? 7 : 1) * 864e5;
+}
+
 // ---------- Server ----------
 async function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
   try {
     const session = sessionOf(req);
 
+    if (url.pathname.startsWith('/s/')) return await shareRoute(req, res, url);
+
     if (url.pathname.startsWith('/api/')) {
       const parts = url.pathname.split('/').filter(Boolean); // ['api', 'photos', id?]
+      if (restoring && req.method !== 'GET') throw httpError(503, 'Đang khôi phục dữ liệu từ bản sao lưu, thử lại sau ít phút');
+      // /api/backup — sao lưu tự động, khôi phục (chỉ quản trị viên)
+      if (parts[1] === 'backup') {
+        if (!session) throw httpError(401, 'Cần đăng nhập');
+        return await backupApi(req, res, parts, session.user);
+      }
       // GET /api/public — ảnh công khai của mọi người
       if (parts[1] === 'public' && parts.length === 2 && req.method === 'GET') {
         if (!session) throw httpError(401, 'Cần đăng nhập');
@@ -1712,6 +2299,18 @@ async function handle(req, res) {
       if (parts[1] === 'albums') {
         if (!session) throw httpError(401, 'Cần đăng nhập');
         return await albumsApi(req, res, parts, session.user.id);
+      }
+      if (parts[1] === 'trash') {
+        if (!session) throw httpError(401, 'Cần đăng nhập');
+        return await trashApi(req, res, parts, session.user.id);
+      }
+      if (parts[1] === 'shares') {
+        if (!session) throw httpError(401, 'Cần đăng nhập');
+        return await sharesApi(req, res, parts, session.user.id);
+      }
+      if (parts[1] === 'duplicates') {
+        if (!session) throw httpError(401, 'Cần đăng nhập');
+        return await duplicatesApi(req, res, parts, session.user.id);
       }
       // GET /api/import — thư mục nhập ảnh và tiến độ; POST /api/import — quét ngay
       if (parts[1] === 'import' && parts.length === 2) {
@@ -1729,6 +2328,9 @@ async function handle(req, res) {
       return await authApi(req, res, parts, session);
     }
 
+    // Android "Chia sẻ" vào ứng dụng đã cài: service worker (public/sw.js) nhận trước. Tới được server là chưa có service worker
+    // (lần đầu mở sau khi cài, trình duyệt xoá dữ liệu...): bỏ file, mở gallery
+    if (url.pathname === '/share-target' && req.method === 'POST') { req.resume(); return send(res, 303, '', { Location: '/' }); }
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
 
     const page = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -1819,6 +2421,24 @@ async function switchPort(port) {
   console.log(`Nếu dùng Tailscale Funnel, chạy lại:  tailscale funnel --bg ${port}\n`);
 }
 
+// Làm tiếp việc còn dở của ảnh trong máy: lúc khởi động, và sau khi khôi phục bản sao lưu
+function resumeWork(links = true) {
+  // Tạo dần ảnh nhỏ cho các ảnh cũ chưa có (kể cả ảnh chỉ thiếu một cỡ mới thêm)
+  const missing = (uid, p) => Object.keys(media.SIZES).some(s => !fs.existsSync(media.variantPath(cacheDir(uid, p), p.id, s)));
+  // (ảnh trên ổ ngoài: làm khi quét thư mục liên kết, vì ổ có thể đang rút)
+  if (media.hasSharp) for (const u of users) for (const p of getPhotos(u.id)) if (p.kind !== 'video' && !p.link && (!p.color || missing(u.id, p))) makeThumbs(u.id, p);
+  // Video chưa đủ ảnh bìa / mức HLS (vd. tải lên khi chưa cài ffmpeg, hoặc server tắt giữa chừng): làm tiếp
+  if (video.hasFfmpeg) for (const u of users) for (const p of getPhotos(u.id)) if (p.kind === 'video' && !p.link) processVideo(u.id, p);
+  // Chế độ gọn nhẹ: xoá các mức video khác 720p còn sót (vd. tạo từ trước khi có tuỳ chọn này)
+  (async () => {
+    let freed = 0;
+    for (const u of users) for (const p of getPhotos(u.id)) if (p.kind === 'video' && !p.link) freed += await pruneHls(u.id, p);
+    if (freed) console.log(`Video gọn nhẹ (720p + bản gốc): đã xoá ${(freed / 1048576).toFixed(1)} MB các mức chất lượng khác`);
+  })();
+  scheduleMeta();
+  if (links) scanLinks();
+}
+
 listenOn(PORT).then(s => {
   server = s;
   console.log(`\nGallery đang chạy:`);
@@ -1841,22 +2461,17 @@ listenOn(PORT).then(s => {
 
   setTimeout(scanImports, 1000);
   setInterval(scanImports, IMPORT_SCAN_MS).unref();
-  // Tạo dần ảnh nhỏ cho các ảnh cũ chưa có (kể cả ảnh chỉ thiếu một cỡ mới thêm)
-  const missing = (uid, p) => Object.keys(media.SIZES).some(s => !fs.existsSync(media.variantPath(cacheDir(uid, p), p.id, s)));
-  // (ảnh trên ổ ngoài: làm khi quét thư mục liên kết, vì ổ có thể đang rút)
-  if (media.hasSharp) for (const u of users) for (const p of getPhotos(u.id)) if (p.kind !== 'video' && !p.link && (!p.color || missing(u.id, p))) makeThumbs(u.id, p);
-  // Video chưa đủ ảnh bìa / mức HLS (vd. tải lên khi chưa cài ffmpeg, hoặc server tắt giữa chừng): làm tiếp
-  if (video.hasFfmpeg) for (const u of users) for (const p of getPhotos(u.id)) if (p.kind === 'video' && !p.link) processVideo(u.id, p);
-  // Chế độ gọn nhẹ: xoá các mức video khác 720p còn sót (vd. tạo từ trước khi có tuỳ chọn này)
-  (async () => {
-    let freed = 0;
-    for (const u of users) for (const p of getPhotos(u.id)) if (p.kind === 'video' && !p.link) freed += await pruneHls(u.id, p);
-    if (freed) console.log(`Video gọn nhẹ (720p + bản gốc): đã xoá ${(freed / 1048576).toFixed(1)} MB các mức chất lượng khác`);
-  })();
+  resumeWork(false);
   // Thư mục liên kết (ổ cứng ngoài): quét lúc khởi động, định kỳ, và ngay khi cắm ổ vào
   setTimeout(scanLinks, 2000);
   setInterval(scanLinks, LINK_SCAN_MS).unref();
   setInterval(checkLinks, LINK_CHECK_MS).unref();
+  // Thùng rác: xoá hẳn ảnh quá hạn
+  setTimeout(purgeTrash, 2 * 60 * 1000).unref();
+  setInterval(purgeTrash, 6 * 3600 * 1000).unref();
+  // Sao lưu tự động theo lịch
+  setInterval(() => { if (backupDue()) startBackup('auto').catch(() => {}); }, 5 * 60 * 1000).unref();
+  setTimeout(() => { if (backupDue()) startBackup('auto').catch(() => {}); }, 60 * 1000).unref();
 }, err => {
   if (err.code === 'EADDRINUSE' || err.code === 'EACCES') {
     console.error(err.code === 'EADDRINUSE'

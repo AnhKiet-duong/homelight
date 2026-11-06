@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f4efe6">
 <title>Tài khoản · My Gallery</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <script src="/i18n.js"></script>
 <script src="/i18n/account.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -240,6 +243,31 @@
     <p class="msg" id="videoMsg" role="status"></p>
   </section>
 
+  <section class="panel" id="backupPanel" hidden>
+    <h2>Sao lưu tự động</h2>
+    <p>Chép ảnh, video gốc và dữ liệu gallery (album, tài khoản, yêu thích) sang một thư mục khác theo lịch: ổ cứng ngoài, hoặc thư mục mà OneDrive / Google Drive / Dropbox đồng bộ lên mạng. Lần đầu chép hết, các lần sau chỉ chép ảnh mới. Ảnh nhỏ và bản video đã chuyển đổi không cần sao lưu (server tự tạo lại).</p>
+    <form id="bkForm" novalidate>
+      <div class="row" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div class="field" style="flex:2 1 280px"><label for="bkDir">Thư mục sao lưu</label><input id="bkDir" autocomplete="off" spellcheck="false" placeholder="vd: E:\Sao luu"></div>
+        <button class="btn" type="button" id="bkBrowseBtn">Chọn thư mục…</button>
+      </div>
+      <div class="browser" id="bkBrowser" hidden>
+        <div class="bar"><button class="btn small" type="button" id="bkBrUp">Lên</button><code id="bkBrPath"></code><button class="btn small light" type="button" id="bkBrPick">Chọn thư mục này</button></div>
+        <ul id="bkBrList"></ul>
+      </div>
+      <div class="row" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-top:12px">
+        <div class="field" style="flex:1 1 170px"><label for="bkFreq">Lịch</label><select id="bkFreq"><option value="off">Tắt</option><option value="daily">Hằng ngày</option><option value="weekly">Hằng tuần (Chủ nhật)</option></select></div>
+        <div class="field" style="flex:0 1 110px"><label for="bkHour">Lúc</label><select id="bkHour"></select></div>
+        <div class="field" style="flex:0 1 130px"><label for="bkKeep">Giữ lại</label><select id="bkKeep"><option value="3">3 bản</option><option value="5">5 bản</option><option value="10">10 bản</option><option value="20">20 bản</option><option value="30">30 bản</option></select></div>
+        <button class="btn light" type="submit">Lưu</button>
+        <button class="btn" type="button" id="bkRun">Sao lưu ngay</button>
+      </div>
+    </form>
+    <p class="msg" id="bkMsg" role="status"></p>
+    <p class="hint" id="bkStatus"></p>
+    <div class="links" id="bkList"></div>
+  </section>
+
   <section class="panel" id="drives" hidden>
     <h2>Ổ cứng ngoài</h2>
     <p id="drivesIntro">Trỏ tới một thư mục trên ổ cứng ngoài (hoặc bất kỳ ổ nào của máy chủ): ảnh và video trong đó hiện luôn trong gallery mà không bị chép vào máy. File gốc không bao giờ bị sửa hay xoá. Rút ổ ra thì các ảnh đó tạm ẩn, cắm lại là hiện lại.</p>
@@ -423,28 +451,35 @@ modeBtns.forEach(b => b.onclick = async () => {
 // ---------- Ổ cứng ngoài (thư mục liên kết) ----------
 const fmtTime = new Intl.DateTimeFormat(i18n.locale, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' });
 const FOLDER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
-let browsing = null, linksTimer = 0;
+let linksTimer = 0;
 
-async function browse(path) {
-  try {
-    browsing = await api('GET', '/api/links/browse' + (path ? '?path=' + encodeURIComponent(path) : ''));
-  } catch (err) { say($('linkMsg'), err.message); return; }
-  $('browser').hidden = false;
-  $('brPath').textContent = browsing.path ? `${browsing.path} · ${count(browsing.media, '{0} ảnh/video ở đây')}` : t('Chọn ổ đĩa');
-  $('brUp').disabled = browsing.parent === null;
-  $('brPick').disabled = !browsing.path;
-  const items = browsing.dirs.map(d => {
-    const li = document.createElement('li'), b = document.createElement('button');
-    b.type = 'button'; b.innerHTML = FOLDER_SVG; b.append(d.name);
-    b.onclick = () => browse(d.path);
-    li.append(b); return li;
-  });
-  if (!items.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('Không có thư mục con'); items.push(li); }
-  $('brList').replaceChildren(...items);
+// Chọn thư mục trên máy chủ (chỉ quản trị viên): dùng cho ổ cứng ngoài và thư mục sao lưu
+// px: tiền tố id của khung chọn (vd. 'b' -> #browser, #brUp, #brPath, #brPick, #brList)
+function folderPicker(px, btn, input, msg) {
+  let cur = null;
+  async function browse(path) {
+    try {
+      cur = await api('GET', '/api/links/browse' + (path ? '?path=' + encodeURIComponent(path) : ''));
+    } catch (err) { say(msg, err.message); return; }
+    $(px + 'rowser').hidden = false;
+    $(px + 'rPath').textContent = cur.path ? `${cur.path} · ${count(cur.media, '{0} ảnh/video ở đây')}` : t('Chọn ổ đĩa');
+    $(px + 'rUp').disabled = cur.parent === null;
+    $(px + 'rPick').disabled = !cur.path;
+    const items = cur.dirs.map(d => {
+      const li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button'; b.innerHTML = FOLDER_SVG; b.append(d.name);
+      b.onclick = () => browse(d.path);
+      li.append(b); return li;
+    });
+    if (!items.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('Không có thư mục con'); items.push(li); }
+    $(px + 'rList').replaceChildren(...items);
+  }
+  $(btn).onclick = () => $(px + 'rowser').hidden ? browse(input.value.trim()) : ($(px + 'rowser').hidden = true);
+  $(px + 'rUp').onclick = () => browse(cur.parent);
+  $(px + 'rPick').onclick = () => { input.value = cur.path; $(px + 'rowser').hidden = true; };
 }
-$('browseBtn').onclick = () => $('browser').hidden ? browse($('linkPath').value.trim()) : ($('browser').hidden = true);
-$('brUp').onclick = () => browse(browsing.parent);
-$('brPick').onclick = () => { $('linkPath').value = browsing.path; $('browser').hidden = true; };
+folderPicker('b', 'browseBtn', $('linkPath'), $('linkMsg'));
+folderPicker('bkB', 'bkBrowseBtn', $('bkDir'), $('bkMsg'));
 
 $('linkForm').onsubmit = async e => {
   e.preventDefault();
@@ -532,6 +567,78 @@ async function loadLinks() {
   if (list.some(l => l.scanning)) linksTimer = setTimeout(loadLinks, 3000);
 }
 
+// ---------- Sao lưu tự động ----------
+const fmtClock = new Intl.DateTimeFormat(i18n.locale, { hour: '2-digit', minute: '2-digit' });
+for (let h = 0; h < 24; h++) $('bkHour').append(new Option(String(h).padStart(2, '0') + ':00', h));
+let bkTimer = 0, bkWasRunning = false;
+function bkPhase(b) {
+  const p = b.progress || {};
+  if (b.restoring) return p.phase === 'restore' ? t('Đang khôi phục: chép lại file gốc {0} / {1}…', p.done || 0, p.total || 0) : t('Đang khôi phục…');
+  if (p.phase === 'files') return t('Đang sao lưu: {0} / {1} file (chép thêm {2})…', p.done, p.total, fmtSize(p.bytes || 0));
+  return t('Đang sao lưu…');
+}
+function showBackup(b) {
+  if (document.activeElement !== $('bkDir')) $('bkDir').value = b.dir || '';
+  $('bkFreq').value = b.freq; $('bkHour').value = b.hour;
+  if (![...$('bkKeep').options].some(o => Number(o.value) === b.keep)) $('bkKeep').append(new Option(count(b.keep, '{0} bản'), b.keep));
+  $('bkKeep').value = b.keep;
+  $('bkRun').disabled = !b.dir || b.running || b.restoring;
+  const bits = [];
+  if (b.running || b.restoring) bits.push(bkPhase(b));
+  else if (b.last) bits.push(b.last.ok
+    ? t('Lần gần nhất: {0}, {1} ảnh/video, chép thêm {2} file.', fmtTime.format(b.last.at), b.last.photos, b.last.copied)
+    : t('Lần gần nhất ({0}) bị lỗi: {1}', fmtTime.format(b.last.at), t(b.last.error)));
+  if (b.dir && !b.reachable) bits.push(t('Không thấy thư mục sao lưu (ổ đã cắm chưa?)'));
+  if (b.next && !b.running) bits.push(b.next <= Date.now() + 60000 ? t('Lần tự sao lưu kế tiếp: trong vài phút tới.') : t('Lần tự sao lưu kế tiếp: {0}.', fmtTime.format(b.next)));
+  if (b.root) bits.push(t('Lưu vào {0}', b.root));
+  if (b.linked) bits.push(count(b.linked, '{0} ảnh/video trên ổ cứng ngoài không được sao lưu (file gốc vẫn nằm trên ổ đó).'));
+  $('bkStatus').textContent = bits.join(' ');
+  $('bkList').replaceChildren(...b.snapshots.map(sn => {
+    const row = document.createElement('div');
+    row.className = 'link';
+    row.innerHTML = `<div class="who"><b></b><small></small></div><div class="acts"><button class="btn small danger" type="button">${t('Khôi phục')}</button></div>`;
+    row.querySelector('b').textContent = fmtDate.format(sn.created) + ' · ' + fmtClock.format(sn.created);
+    row.querySelector('small').textContent = [count(sn.photos, '{0} ảnh/video'), count(sn.users, '{0} tài khoản'), fmtSize(sn.bytes),
+      sn.reason === 'before-restore' ? t('tự lưu trước khi khôi phục') : sn.reason === 'auto' ? t('theo lịch') : t('bấm tay')].join(' · ');
+    const btn = row.querySelector('button');
+    btn.disabled = b.running || b.restoring;
+    btn.onclick = () => restoreBackup(sn);
+    return row;
+  }));
+  clearTimeout(bkTimer);
+  if (b.running || b.restoring) bkTimer = setTimeout(loadBackup, 2000);
+  else if (bkWasRunning && b.last) say($('bkMsg'), b.last.ok ? t('Đã sao lưu xong.') : t('Sao lưu bị lỗi: {0}', t(b.last.error)), b.last.ok);
+  bkWasRunning = b.running;
+}
+async function loadBackup() {
+  try { showBackup(await api('GET', '/api/backup')); } catch (err) { say($('bkMsg'), err.message); }
+}
+$('bkForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const b = await api('PUT', '/api/backup', { dir: $('bkDir').value, freq: $('bkFreq').value, hour: Number($('bkHour').value), keep: Number($('bkKeep').value) });
+    say($('bkMsg'), b.dir ? t('Đã lưu cài đặt sao lưu.') : t('Đã tắt sao lưu.'), true);
+    showBackup(b);
+  } catch (err) { say($('bkMsg'), err.message); }
+};
+$('bkRun').onclick = async () => {
+  try { say($('bkMsg'), t('Bắt đầu sao lưu…'), true); showBackup(await api('POST', '/api/backup/run')); }
+  catch (err) { say($('bkMsg'), err.message); }
+};
+async function restoreBackup(sn) {
+  const when = fmtDate.format(sn.created) + ' ' + fmtClock.format(sn.created);
+  if (!confirm(t('Khôi phục bản sao lưu lúc {0}?', when) + '\n\n' + t('Danh sách ảnh, album, tài khoản và thư mục liên kết sẽ quay về đúng lúc đó. Ảnh thêm sau thời điểm này sẽ không còn hiện trong gallery (file vẫn nằm trên máy chủ). Trước khi khôi phục, server tự sao lưu dữ liệu hiện tại để bạn quay lại được.'))) return;
+  say($('bkMsg'), t('Đang khôi phục, đừng tắt server…'), true);
+  const poll = setTimeout(loadBackup, 1500);
+  try {
+    const r = await api('POST', '/api/backup/restore', { id: sn.id });
+    clearTimeout(poll);
+    say($('bkMsg'), t('Đã khôi phục. Chép lại {0} file gốc.', r.copied) + (r.missing ? ' ' + t('Thiếu {0} file trong bản sao lưu.', r.missing) : ''), true);
+    showBackup(r);
+    setTimeout(() => location.reload(), 2500); // tài khoản / quyền có thể đã đổi
+  } catch (err) { clearTimeout(poll); say($('bkMsg'), err.message); loadBackup(); }
+}
+
 (async () => {
   const s = await api('GET', '/api/status');
   if (!s.user) { location.href = '/login.html?next=/account.html'; return; }
@@ -541,7 +648,7 @@ async function loadLinks() {
   $('meId').textContent = me.id;
   $('meRole').textContent = roleName(me.role);
   $('meCreated').textContent = fmtDate.format(me.created);
-  if (me.role === 'admin') { $('admin').hidden = false; $('serverPanel').hidden = false; $('videoPanel').hidden = false; $('drives').hidden = false; loadUsers(); loadSettings(); }
+  if (me.role === 'admin') { $('admin').hidden = false; $('serverPanel').hidden = false; $('videoPanel').hidden = false; $('backupPanel').hidden = false; $('drives').hidden = false; loadUsers(); loadSettings(); loadBackup(); }
   loadLinks();
 })();
 </script>

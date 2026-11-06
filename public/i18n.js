@@ -24,6 +24,10 @@
     'Video quá lớn (tối đa {0} MB)': 'Video is too large (max {0} MB)',
     'Trùng với thư mục đã liên kết "{0}" ({1})': 'Overlaps the linked folder "{0}" ({1})',
     'Trùng với thư mục đã liên kết "{0}"': 'Overlaps the linked folder "{0}"',
+    'Thư mục này nằm trong thư mục liên kết "{0}", hãy chọn chỗ khác': 'This folder is inside the linked folder "{0}". Choose another place.',
+    'Không sao lưu được dữ liệu hiện tại trước khi khôi phục: {0}': 'Could not back up the current data before restoring: {0}',
+    'Bản sao lưu bị hỏng hoặc thiếu file: {0}': 'The backup is damaged or missing a file: {0}',
+    'Tối đa {0} link chia sẻ': 'At most {0} share links',
   };
   const patterns = Object.entries(SERVER_PATTERNS).map(([vi, en]) => ({
     re: new RegExp('^' + vi.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\{\d+\\\}/g, '(.*)') + '$', 's'),
@@ -43,6 +47,14 @@
     'Sai tên đăng nhập hoặc mật khẩu': 'Incorrect username or password',
     'Cần đăng nhập': 'Please sign in',
     'Tuỳ chọn không hợp lệ': 'Invalid setting',
+    'Hãy chọn thư mục sao lưu': 'Choose a backup folder',
+    'Không thấy thư mục sao lưu (ổ đã cắm chưa?)': 'Backup folder not found (is the drive plugged in?)',
+    'Số bản giữ lại từ 1 đến 100': 'Keep between 1 and 100 copies',
+    'Đang khôi phục, đợi chút nhé': 'A restore is running, please wait',
+    'Đang khôi phục dữ liệu từ bản sao lưu, thử lại sau ít phút': 'Restoring data from a backup, try again in a few minutes',
+    'Không tìm thấy bản sao lưu này': 'Backup not found',
+    'Bản sao lưu không có tài khoản quản trị': 'This backup has no admin account',
+    'Đây là thư mục sao lưu của gallery': 'This is the gallery backup folder',
     'Mật khẩu hiện tại không đúng': 'Current password is incorrect',
     'Chỉ quản trị viên mới làm được': 'Admins only',
     'Cổng phải là số từ 1024 đến 65535': 'Port must be a number from 1024 to 65535',
@@ -70,6 +82,14 @@
     'Ổ đĩa chứa ảnh này đang không cắm vào máy chủ': "The drive with this photo isn't connected to the server",
     'Video chưa có bản HLS': 'Video is not ready for streaming yet',
     'Lỗi server': 'Server error',
+    'Chưa chọn ảnh nào': 'No photos selected',
+    'Link không tồn tại hoặc đã bị thu hồi': "This link doesn't exist or has been revoked",
+    'Link này đã hết hạn': 'This link has expired',
+    'Sai mật khẩu': 'Wrong password',
+    'Nhập sai quá nhiều lần, thử lại sau ít phút': 'Too many wrong attempts. Try again in a few minutes.',
+    'Mật khẩu link cần ít nhất 4 ký tự': 'The link password needs at least 4 characters',
+    'Thời hạn không hợp lệ': 'Invalid expiry',
+    'Không tìm thấy link': 'Link not found',
   });
 
   // Thay {0} {1} một lượt: giá trị có sẵn "{1}" hay "$&" (tên file) vẫn giữ nguyên

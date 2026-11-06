@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="vi" data-theme="cinema">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#07070a">
+<title>Album được chia sẻ</title>
+<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+<script>
+  // Khách mở link chưa từng chọn ngôn ngữ: theo ngôn ngữ của trình duyệt
+  try { if (!localStorage.getItem('lang')) localStorage.setItem('lang', /^vi\b/i.test(navigator.language || '') ? 'vi' : 'en'); } catch {}
+</script>
+<script src="/i18n.js"></script>
+<script src="/i18n/share.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600&family=Oswald:wght@500;600&family=Noto+Serif+Display:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07070a; --surface: #121217; --surface-2: #1b1b22; --line: rgba(255,255,255,.1); --text: #f4f1ea; --muted: #a9a59c; --faint: #6f6c66;
+    --gold: #ffc27a; --on-gold: #0b0b0d; --serif: 'Noto Serif Display', Georgia, serif; --sans: 'Be Vietnam Pro', system-ui, sans-serif;
+    --title: 'Oswald', var(--sans); --radius: 14px; --ease: cubic-bezier(.2,.7,.2,1);
+  }
+  html[data-theme="paper"] { --bg: #f4efe6; --surface: #fbf8f2; --surface-2: #ebe4d6; --line: #ddd3c2; --text: #1d1a16; --muted: #6b6358; --faint: #9a9081; --gold: #b4532a; --on-gold: #fff; --title: var(--serif); --radius: 2px; }
+  html[data-theme="bento"] { --bg: #eceff5; --surface: #fff; --surface-2: #f4f6fa; --line: #dde2ec; --text: #11131a; --muted: #5d6475; --faint: #8b92a3; --gold: #3d5afe; --on-gold: #fff; --title: var(--sans); --radius: 20px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  [hidden] { display: none !important; }
+
+  .wrap { max-width: 1400px; margin: 0 auto; padding: calc(48px + env(safe-area-inset-top)) clamp(16px, 4vw, 48px) 64px; }
+  header { margin-bottom: 36px; }
+  .kicker { font-size: 12px; letter-spacing: .24em; text-transform: uppercase; color: var(--gold); }
+  h1 { margin: 12px 0 10px; font-family: var(--title); font-weight: 600; font-size: clamp(36px, 6vw, 72px); line-height: 1; letter-spacing: .01em; text-transform: uppercase; overflow-wrap: anywhere; }
+  html[data-theme="paper"] h1 { text-transform: none; font-weight: 300; font-size: clamp(40px, 7vw, 84px); letter-spacing: -.01em; }
+  html[data-theme="bento"] h1 { text-transform: none; font-weight: 600; letter-spacing: -.03em; }
+  .meta { font-size: 14px; color: var(--muted); }
+  html[data-theme="paper"] header { border-bottom: 2px solid var(--text); padding-bottom: 22px; }
+
+  .grid { columns: 4 260px; column-gap: 14px; }
+  .tile { position: relative; display: block; width: 100%; margin: 0 0 14px; padding: 0; border: 0; break-inside: avoid; background: var(--surface-2); border-radius: var(--radius); overflow: hidden; }
+  .tile img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity .4s var(--ease), transform .5s var(--ease); }
+  .tile img.ok { opacity: 1; }
+  .tile:hover img { transform: scale(1.03); }
+  .tile:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  .tile .vb { position: absolute; left: 10px; bottom: 10px; padding: 4px 9px; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; font-weight: 500; }
+  html[data-theme="paper"] .tile { padding: 8px 8px 0; background: var(--surface); box-shadow: 0 12px 30px -18px rgba(60,40,20,.45); }
+  html[data-theme="paper"] .tile::after { content: attr(data-d); display: block; padding: 8px 2px 10px; font-family: var(--serif); font-style: italic; font-size: 13px; color: var(--muted); text-align: left; }
+  html[data-theme="bento"] .grid { columns: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); grid-auto-rows: 180px; grid-auto-flow: dense; gap: 12px; }
+  html[data-theme="bento"] .tile { margin: 0; height: 100%; }
+  html[data-theme="bento"] .tile img { height: 100%; object-fit: cover; }
+  html[data-theme="bento"] .tile.w { grid-column: span 2; }
+  html[data-theme="bento"] .tile.h { grid-row: span 2; }
+  footer { margin-top: 48px; text-align: center; font-size: 12px; color: var(--faint); }
+
+  /* Màn hình nhập mật khẩu / báo lỗi */
+  .gate { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+  .card { width: min(380px, 100%); padding: 32px 28px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
+  html[data-theme="paper"] .card { border-radius: 4px; box-shadow: 0 30px 60px -30px rgba(60,40,20,.4); border: 0; }
+  .card .ic { width: 56px; height: 56px; margin: 0 auto 16px; display: grid; place-items: center; border-radius: 999px; background: var(--surface-2); color: var(--gold); }
+  .card .ic svg { width: 26px; height: 26px; }
+  .card h2 { margin: 0 0 6px; font-size: 20px; font-weight: 600; overflow-wrap: anywhere; }
+  .card p { margin: 0 0 20px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+  .card input { width: 100%; height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 15px; }
+  .card input:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+  .card .go { width: 100%; height: 46px; margin-top: 10px; border: 0; border-radius: 12px; background: var(--gold); color: var(--on-gold); font-weight: 600; }
+  .card .go:disabled { opacity: .6; }
+  .card .err { min-height: 20px; margin-top: 10px; font-size: 13px; color: #ff8a80; }
+  html[data-theme="paper"] .card .err, html[data-theme="bento"] .card .err { color: #c62828; }
+
+  /* Xem phóng to */
+  .lb { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; background: rgba(5,5,7,.96); color: #f4f1ea; opacity: 0; visibility: hidden; transition: opacity .25s, visibility .25s; }
+  html[data-theme="paper"] .lb { background: rgba(244,239,230,.97); color: #1d1a16; }
+  html[data-theme="bento"] .lb { background: rgba(236,239,245,.97); color: #11131a; }
+  .lb.open { opacity: 1; visibility: visible; }
+  .lb-top { display: flex; align-items: center; gap: 10px; padding: calc(12px + env(safe-area-inset-top)) 16px 12px; }
+  .lb-top .t { flex: 1; min-width: 0; }
+  .lb-top b { display: block; font-weight: 500; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lb-top small { font-size: 12px; opacity: .65; }
+  .lb-btn { flex: none; height: 42px; min-width: 42px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid currentColor; border-color: rgba(127,127,127,.35); border-radius: 999px; background: transparent; text-decoration: none; color: inherit; font-size: 14px; }
+  .lb-btn svg { width: 18px; height: 18px; }
+  .lb-stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; padding: 0 64px 24px; touch-action: pan-y; }
+  .lb-stage img, .lb-stage video { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
+  html[data-theme="paper"] .lb-stage img { background: #fff; padding: 10px; border-radius: 2px; box-shadow: 0 30px 60px -30px rgba(60,40,20,.5); }
+  .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 46px; height: 46px; border-radius: 999px; border: 0; background: rgba(127,127,127,.18); display: grid; place-items: center; color: inherit; }
+  .lb-nav svg { width: 22px; height: 22px; }
+  .lb-nav.prev { left: 10px; } .lb-nav.next { right: 10px; }
+  @media (max-width: 700px) {
+    .lb-stage { padding: 0 0 16px; }
+    .lb-nav { display: none; }
+    .lb-btn .lbl { display: none; }
+    .grid { columns: 2 140px; column-gap: 8px; }
+    .tile { margin-bottom: 8px; }
+    html[data-theme="bento"] .grid { grid-template-columns: repeat(3, 1fr); grid-auto-rows: 110px; gap: 6px; }
+    html[data-theme="paper"] .tile { padding: 5px 5px 0; }
+  }
+</style>
+</head>
+<body>
+<div class="gate" id="gate" hidden>
+  <div class="card">
+    <div class="ic" id="gateIc"></div>
+    <h2 id="gateTitle"></h2>
+    <p id="gateText"></p>
+    <form id="passForm" hidden>
+      <input type="password" id="pass" autocomplete="current-password" placeholder="Mật khẩu" aria-label="Mật khẩu" required>
+      <button class="go" id="passGo" type="submit">Mở album</button>
+      <div class="err" id="passErr" role="alert"></div>
+    </form>
+  </div>
+</div>
+
+<div class="wrap" id="main" hidden>
+  <header>
+    <div class="kicker">Album được chia sẻ</div>
+    <h1 id="name"></h1>
+    <div class="meta" id="meta"></div>
+  </header>
+  <div class="grid" id="grid"></div>
+  <footer id="foot"></footer>
+</div>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Xem ảnh">
+  <div class="lb-top">
+    <div class="t"><b id="lbName"></b><small id="lbInfo"></small></div>
+    <a class="lb-btn" id="lbDown" download hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span class="lbl">Tải xuống</span></a>
+    <button class="lb-btn" id="lbClose" aria-label="Đóng"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </div>
+  <div class="lb-stage" id="stage">
+    <button class="lb-nav prev" id="lbPrev" aria-label="Ảnh trước"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
+    <img id="lbImg" alt="" hidden>
+    <video id="lbVid" controls playsinline hidden></video>
+    <button class="lb-nav next" id="lbNext" aria-label="Ảnh sau"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
+  </div>
+</div>
+
+<script>i18n.apply()</script>
+<script>
+// Trang xem album qua link chia sẻ (/s/<mã>), không cần tài khoản. Dữ liệu: /s/<mã>/info, mật khẩu: /s/<mã>/unlock
+const $ = id => document.getElementById(id);
+const t = i18n.t;
+const tn = (key, n, ...rest) => t(n === 1 ? key.replace('{0}', '1') : key, n, ...rest);
+const esc = s => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+const base = location.pathname.replace(/\/+$/, '');
+const fmtDate = new Intl.DateTimeFormat(i18n.locale, { day: 'numeric', month: 'long', year: 'numeric' });
+const lockSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+const sadSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 15c1.5-1.3 4.5-1.3 6 0M9 9.5h.01M15 9.5h.01"/></svg>';
+let list = [], cur = -1, info = null;
+
+function setTheme(th) {
+  document.documentElement.dataset.theme = ['paper', 'bento'].includes(th) ? th : 'cinema';
+  document.querySelector('meta[name="theme-color"]').content = { paper: '#f4efe6', bento: '#eceff5' }[th] || '#07070a';
+}
+function gate(icon, title, text, form = false) {
+  $('main').hidden = true; $('gate').hidden = false;
+  $('gateIc').innerHTML = icon; $('gateTitle').textContent = title; $('gateText').textContent = text;
+  $('passForm').hidden = !form;
+  if (form) $('pass').focus();
+}
+
+async function load() {
+  let res;
+  try { res = await fetch(base + '/info', { cache: 'no-store' }); } catch { return gate(sadSvg, t('Không kết nối được'), t('Kiểm tra mạng rồi tải lại trang.')); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return gate(sadSvg, t(res.status === 410 ? 'Link đã hết hạn' : 'Không mở được link'), t(data.error || 'Link không tồn tại hoặc đã bị thu hồi'));
+  info = data;
+  setTheme(data.theme);
+  document.title = data.name;
+  if (data.locked) return gate(lockSvg, data.name, t('Album này có mật khẩu. Nhập mật khẩu người gửi cho bạn để xem.'), true);
+  show();
+}
+
+function show() {
+  $('gate').hidden = true; $('main').hidden = false;
+  list = info.photos.slice().sort((a, b) => (b.taken || b.added) - (a.taken || a.added));
+  $('name').textContent = info.name;
+  $('meta').textContent = [tn('{0} ảnh', list.length), t('từ {0}', info.owner), info.expires ? t('xem được tới {0}', fmtDate.format(new Date(info.expires))) : ''].filter(Boolean).join('  ·  ');
+  $('foot').textContent = t('Chia sẻ từ gallery cá nhân homelight');
+  const grid = $('grid'); grid.innerHTML = '';
+  if (!list.length) { grid.innerHTML = `<p class="meta">${esc(t('Album này chưa có ảnh nào.'))}</p>`; return; }
+  list.forEach((p, i) => {
+    const b = document.createElement('button');
+    const ar = p.w && p.h ? p.w / p.h : 1;
+    b.className = 'tile' + (ar > 1.45 ? ' w' : ar < .8 ? ' h' : '');
+    b.dataset.d = fmtDate.format(new Date(p.taken || p.added));
+    if (p.color) b.style.background = `rgb(${p.color})`;
+    b.innerHTML = `<img loading="lazy" alt="" ${p.w ? `width="${p.w}" height="${p.h}"` : ''}>${p.kind === 'video' ? `<span class="vb">▶ ${p.duration ? dur(p.duration) : 'Video'}</span>` : ''}`;
+    const img = b.firstChild;
+    img.onload = () => img.classList.add('ok');
+    img.src = p.thumb; img.alt = p.name;
+    b.onclick = () => open(i);
+    grid.appendChild(b);
+  });
+}
+const dur = s => { s = Math.round(s); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, '0')}`; };
+
+$('passForm').onsubmit = async e => {
+  e.preventDefault();
+  $('passGo').disabled = true; $('passErr').textContent = '';
+  try {
+    const res = await fetch(base + '/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('pass').value }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(t(data.error) || t('Lỗi {0}', res.status));
+    await load();
+  } catch (err) { $('passErr').textContent = err.message; $('pass').select(); }
+  $('passGo').disabled = false;
+};
+
+// ---------- Xem phóng to ----------
+let hlsLib = null, hls = null;
+const loadScript = src => new Promise((ok, fail) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = fail; document.head.append(s); });
+const getHls = () => hlsLib ||= loadScript('https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.light.min.js').catch(() => loadScript('/vendor/hls.light.min.js')).then(() => window.Hls);
+function stopVideo() {
+  if (hls) { hls.destroy(); hls = null; }
+  const v = $('lbVid'); v.pause(); v.removeAttribute('src'); v.load(); v.hidden = true;
+}
+async function setPhoto() {
+  const p = list[cur]; if (!p) return;
+  stopVideo();
+  $('lbName').textContent = p.name;
+  $('lbInfo').textContent = [fmtDate.format(new Date(p.taken || p.added)), `${cur + 1} / ${list.length}`].join('  ·  ');
+  $('lbDown').hidden = !info.download || !p.url;
+  if (p.url) { $('lbDown').href = p.url; $('lbDown').setAttribute('download', p.name); }
+  const img = $('lbImg'), v = $('lbVid');
+  if (p.kind !== 'video') { v.hidden = true; img.hidden = false; img.src = p.thumb; const full = new Image(); full.onload = () => { if (list[cur] === p) img.src = p.preview; }; full.src = p.preview; return; }
+  img.hidden = true; v.hidden = false; v.poster = p.preview;
+  if (p.hls && window.MediaSource) {
+    try {
+      const Hls = await getHls();
+      if (list[cur] !== p) return;
+      if (Hls && Hls.isSupported()) { hls = new Hls({ capLevelToPlayerSize: true }); hls.loadSource(p.hls); hls.attachMedia(v); return; }
+    } catch { /* không tải được hls.js: phát file gốc */ }
+  }
+  v.src = p.hls && v.canPlayType('application/vnd.apple.mpegurl') ? p.hls : p.url;
+}
+function open(i) { cur = i; $('lb').classList.add('open'); document.body.style.overflow = 'hidden'; setPhoto(); }
+function close() { $('lb').classList.remove('open'); document.body.style.overflow = ''; stopVideo(); cur = -1; }
+const go = d => { if (!list.length) return; cur = (cur + d + list.length) % list.length; setPhoto(); };
+$('lbClose').onclick = close;
+$('lbPrev').onclick = () => go(-1);
+$('lbNext').onclick = () => go(1);
+$('stage').addEventListener('click', e => { if (e.target === $('stage')) close(); });
+addEventListener('keydown', e => {
+  if (cur < 0) return;
+  if (e.key === 'Escape') close();
+  else if (e.key === 'ArrowLeft') go(-1);
+  else if (e.key === 'ArrowRight') go(1);
+});
+let sx = null;
+$('stage').addEventListener('touchstart', e => { sx = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+$('stage').addEventListener('touchend', e => {
+  if (sx === null) return;
+  const dx = e.changedTouches[0].clientX - sx; sx = null;
+  if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+});
+load();
+</script>
+</body>
+</html>

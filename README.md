@@ -17,7 +17,7 @@ Open `http://localhost:3000` **on the machine running the server** to create the
 
 **Changing the port:** as an admin, go to **Account → Server port** and enter a new port (1024–65535). The server opens the new port immediately without a restart, the page redirects to the new address, and the port is saved in `storage/settings.json` for future runs. If you start with `PORT=8080 node server.js`, the `PORT` variable takes priority and can't be changed from the page. Delete `storage/settings.json` to go back to port 3000.
 
-Other devices on the same Wi‑Fi network can open the IP address the server prints. To reach the gallery from anywhere while keeping your photos on your own machine, see [docs/truy-cap-tu-xa.md](docs/truy-cap-tu-xa.md) (in Vietnamese).
+Other devices on the same Wi‑Fi network can open the IP address the server prints. To reach the gallery from anywhere while keeping your photos on your own machine, see [docs/truy-cap-tu-xa.md](docs/truy-cap-tu-xa.md) (in Vietnamese). To run it on a rented VPS with your own domain (pm2, nginx, free HTTPS from Let's Encrypt), see [docs/trien-khai-vps.md](docs/trien-khai-vps.md) (in Vietnamese); sample configs are in `deploy/`.
 
 > It does not work on Vercel/Netlify: those platforms don't keep files between runs, so uploaded photos would be lost.
 
@@ -80,6 +80,61 @@ To view photos and videos on an external drive without using space on your machi
 - Only admins can link folders (because it allows reading the server's drives). The list is stored in `storage/links.json`
 - Formats: JPEG, PNG, GIF, WebP, AVIF, BMP, HEIC (iPhone), and the video formats listed above
 
+## Automatic backup
+
+As an admin, go to **Account → Automatic backup**, pick a folder (an external drive, or a folder that OneDrive / Google Drive / Dropbox syncs to the cloud), choose **Daily** or **Weekly (Sunday)** and a time, then click **Save**. **Back up now** runs one immediately.
+
+- Everything goes into `<your folder>/homelight-backup/`: `files/` holds the original photos and videos, `snapshots/` holds one small folder per backup with the photo lists, albums, accounts, linked folders and share links at that moment.
+- The first run copies everything; later runs only copy new photos (originals never change), so a daily backup is quick.
+- **Keep** sets how many snapshots to keep (default 10). Older snapshots are deleted, and so are original files that no remaining snapshot needs.
+- If the computer is off at the scheduled time, the backup runs a few minutes after the server starts again. If the folder is missing (drive unplugged), it retries every hour and shows the error on the Account page.
+- Not backed up: thumbnails and converted video copies (the server rebuilds them), photos in linked external-drive folders (the originals stay on that drive), and login sessions.
+- **Restore** (next to each snapshot) puts photos, albums, accounts, linked folders and share links back to that moment and copies back any missing originals. The server first backs up the current state (marked "saved before a restore"), so a restore can be undone. Photos added after the snapshot no longer appear in the gallery, but their files stay in `storage/`. The port and backup settings are kept.
+- The backup folder contains account data (with hashed passwords): keep it private.
+
+## Share links
+
+Open an album and click **Share** (or **More → Share links** to see all of them). Anyone with the link can view the album in a browser without an account.
+
+- **Expires**: 1 day, 7 days, 30 days, 1 year or never. An expired link shows "This link has expired"
+- **Password** (optional, at least 4 characters): visitors type it once per browser. Changing or removing the password makes everyone type it again
+- **Allow downloading originals**: off by default, so visitors only get a screen-sized copy of each photo. Videos play normally either way
+- **Page style**: Cinema, Paper album or Color tiles, independent of the theme you use yourself
+- The link always shows the album as it is now: photos you add or remove change what visitors see. The place and camera of each photo are never shown
+- **Revoke** stops the link immediately. Deleting the album revokes its links too. Each link shows how many times it was opened
+- The link is built from the address you opened the gallery with. If that is `localhost`, the link won't work on other devices, so open the gallery with your network address or domain name before copying. For people outside your home network, the server needs a public address (see the VPS guide or port forwarding)
+- Shared pages ask search engines not to index them and don't send the link to other sites
+
+## Install as an app
+
+Open **More → Install as an app**. The gallery then opens from your home screen or app list, full screen without the browser's address bar. Photos stay on your server and take no space on the device.
+
+- **Android (Chrome)**: tap **Install**, or use the Chrome ⋮ menu → **Add to Home screen**. After installing, you can select photos or videos in your Gallery app, tap **Share** and pick **My Gallery** to upload them directly
+- **Computer (Chrome, Edge)**: click the install icon at the end of the address bar
+- **iPhone / iPad**: open the gallery in Safari, tap **Share**, then **Add to Home Screen**
+- The screen stays on while photos upload, and closing the page during an upload asks first
+- Offline, the app shows a "Can't connect" page instead of the browser's error page
+
+Limits, so nothing comes as a surprise:
+
+- **HTTPS is required** for installing on Android and computers (and for sharing into the app). Opening the gallery as `http://192.168.x.x:3000` on your home network works in the browser but can't be installed; you need a domain name with HTTPS (see the VPS guide), or open it on the server itself as `localhost`
+- **iPhone / iPad**: Apple doesn't let web apps receive photos from the Share button in Photos, so upload with the **Upload** button inside the app. The home screen app has its own login, separate from Safari
+- **No background upload** anywhere: switching to another app, locking the screen or closing the app pauses or stops an upload. Keep the app open until it finishes
+- It is still a website: it needs to reach your server to show anything
+
+## Search, filters and timeline
+
+The server reads each photo's camera, lens, settings (aperture, shutter speed, ISO, focal length) and GPS position, and from the GPS position works out the nearest town or city. Videos from phones get their GPS position and camera too (needs ffmpeg). Photos you already have are read gradually in the background after you update; photos on an external drive are read while the drive is plugged in.
+
+- **Search** matches the photo name, place, country and camera, and ignores Vietnamese accents (`da lat` finds "Đà Lạt")
+- **Filter** (next to **Select**): date range, camera, place (a whole country or one city), photos or videos only, and photos with a GPS position only. The button shows how many filters are on
+- **More → Timeline** groups photos by month and then by day, showing where each day was spent, with a month scrubber on the right edge to jump quickly. Your choice is remembered in the browser
+- The enlarged view shows the place, camera and settings
+- **More → Photo map** shows every photo with a GPS position on a map, grouped into clusters with a thumbnail and a count. Click a photo to open it, or zoom to an area and click **Show photos in this area** to filter the gallery to it (clear it under **Filter**). Inside an album, the map shows only that album
+- Place and GPS position are private: when you make a photo **Public**, other accounts don't see where it was taken
+
+Place names come from [GeoNames](https://www.geonames.org/) (CC BY 4.0), stored in `data/cities.txt.gz` (about 24,000 towns and cities, every town in Vietnam). Everything is worked out on your server; no photo location is sent anywhere. The map background is loaded from [CARTO](https://carto.com/) (map data © OpenStreetMap contributors), so the map needs an internet connection, and CARTO sees which area you are looking at, but not your photos.
+
 ## iPhone HEIC photos
 
 Chrome, Edge and Firefox can't open HEIC photos, and sharp as installed from npm has no HEVC decoder (for licensing reasons). So the server also uses `heic-decode` (installed by `npm install`) to decode a HEIC once, then creates WebP thumbnails like any other photo. The gallery shows the WebP; the download button still returns the original HEIC file. The capture date is read from EXIF in the HEIC file. A 12 MP photo takes about 1–2 seconds to decode the first time; later views are as fast as any other photo.
@@ -125,7 +180,11 @@ The gallery is designed to run on a home computer on a home connection. The bott
 - Video viewing in all three themes, with quality that adapts to the network (see **Video**)
 - Photo grid grouped by year, 3D tilt on hover, ambient light color taken from the photo
 - Three themes, switched with the **Appearance** button in the top bar: **Cinema** (dark background, 3D tilt), **Paper album** (light paper background, white photo frames, magazine-style type) and **Color tiles** (rounded tile grid, album sidebar, an "On this day" tile; a bottom navigation bar on phones). Your choice is remembered in the browser
-- Favorites, search, sorting, enlarged view, download, delete
+- Share links for an album, with an expiry date, an optional password and an on/off switch for downloading originals; no account needed to view, revocable at any time (see **Share links**)
+- Installable as an app on Android, iPhone and computers, with sharing photos into it from Android (see **Install as an app**)
+- Favorites, search (by name, place or camera, accents optional), filters, timeline, sorting, enlarged view, download, delete
+- Duplicates (**More → Duplicates**): finds photos that are identical, or the same photo at another size, compressed again or slightly edited. Each group suggests keeping the largest version; click another to keep it instead, or tick **Keep all**. The others go to the trash, and their albums and favorites move to the photo you keep. Existing photos are analyzed in the background after you update
+- Trash: deleting a photo or video (one at a time, or several with **Select → Delete**) moves it to the trash instead of removing it. The toast that appears has an **Undo** button. Open **More → Trash** to restore photos or delete them for good; anything left in the trash for 30 days is removed automatically. For photos on an external drive, deleting for good only hides them from the gallery, and the file on the drive is kept
 - Photo zoom while viewing (up to 5x): mouse wheel, double-click, `+` `-` `0` keys, or pinch and double-tap on phones; drag to pan
 - Slideshow (`/slideshow.html`): 3D carousel, Ken Burns effect, background music, fullscreen, keyboard shortcuts
 - English and Vietnamese interface: choose on the login page or under **Account → Language**. The choice is saved per account and follows you across devices; accounts with no saved choice start in English
@@ -134,8 +193,13 @@ The gallery is designed to run on a home computer on a home connection. The bott
 
 - `server.js` — server and API (`/api/photos`, `/api/albums`, `/api/public`, `/api/import`, `/api/links`, `/api/login`, `/api/users`, …)
 - `media.js` — reads EXIF, identifies images, creates thumbnails with sharp
+- `backup.js` — scheduled backup and restore (see **Automatic backup**)
+- `exif.js` — reads camera, settings and GPS position, and finds the nearest town (see **Search, filters and timeline**)
+- `data/cities.txt.gz` — town and city list from GeoNames (CC BY 4.0); `data/make-cities.js` rebuilds it
 - `video.js` — identifies videos, reads metadata, creates covers and HLS copies with ffmpeg
 - `public/vendor/hls.light.min.js` — HLS player (hls.js 1.7.3, Apache 2.0 license), the fallback when the CDN is unreachable
+- `public/vendor/leaflet/` — map library for the photo map (Leaflet 1.9.4, BSD 2-clause; Leaflet.markercluster 1.5.3, MIT)
+- `public/extras.js` — panels opened from the **More** menu (trash, photo map), loaded the first time one is opened
 - `public/index.html` — gallery page
 - `public/slideshow.html` — slideshow page
 - `public/login.html`, `public/account.html` — login, account and user management
@@ -149,6 +213,6 @@ The gallery is designed to run on a home computer on a home connection. The bott
   - `users/<id>/photos.json` — each person's photo info
   - `users/<id>/albums.json` — each person's albums
 
-Backup: just copy the whole `storage/` folder.
+Backup: use **Account → Automatic backup**, or copy the whole `storage/` folder while the server is stopped.
 
 Upgrading from an old version: photos in `uploads/` and `data.json` are moved into the admin account automatically when you create it.

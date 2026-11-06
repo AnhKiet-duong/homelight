@@ -1,0 +1,23 @@
+// Từ điển trang xem album qua link chia sẻ (share.html)
+i18n.add({
+  'Album được chia sẻ': 'Shared album',
+  'Mật khẩu': 'Password',
+  'Mở album': 'Open album',
+  'Tải xuống': 'Download',
+  'Đóng': 'Close',
+  'Xem ảnh': 'Photo viewer',
+  'Ảnh trước': 'Previous photo',
+  'Ảnh sau': 'Next photo',
+  'Không kết nối được': "Can't connect",
+  'Kiểm tra mạng rồi tải lại trang.': 'Check your connection and reload the page.',
+  'Link đã hết hạn': 'This link has expired',
+  'Không mở được link': "Can't open this link",
+  'Album này có mật khẩu. Nhập mật khẩu người gửi cho bạn để xem.': 'This album has a password. Enter the password the sender gave you to view it.',
+  '{0} ảnh': '{0} photos',
+  '1 ảnh': '1 photo',
+  'từ {0}': 'from {0}',
+  'xem được tới {0}': 'available until {0}',
+  'Chia sẻ từ gallery cá nhân homelight': 'Shared from a personal homelight gallery',
+  'Album này chưa có ảnh nào.': 'This album has no photos yet.',
+  'Lỗi {0}': 'Error {0}',
+});

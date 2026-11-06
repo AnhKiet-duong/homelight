@@ -123,7 +123,20 @@ async function makeVariants(src, dir, id) {
     await fsp.rename(out + '.tmp', out);
   }
   const { channels } = await sharp(variantPath(dir, id, 'sm')).stats();
-  return { color: channels.slice(0, 3).map(c => Math.round(c.mean)).join(' '), ...(size || await imageSize(src)) };
+  return { color: channels.slice(0, 3).map(c => Math.round(c.mean)).join(' '), dhash: await dhash(variantPath(dir, id, 'sm')), ...(size || await imageSize(src)) };
+}
+
+// "Vân tay" 64 bit của ảnh (dHash): thu về 9x8 điểm xám, mỗi bit = điểm này sáng hơn điểm bên phải.
+// Ảnh giống nhau (đổi cỡ, nén lại, chỉnh nhẹ) có vân tay chỉ khác vài bit. Trả về chuỗi hex 16 ký tự
+async function dhash(file) {
+  const data = await sharp(file).greyscale().resize(9, 8, { fit: 'fill' }).raw().toBuffer();
+  let hex = '';
+  for (let y = 0; y < 8; y++) {
+    let byte = 0;
+    for (let x = 0; x < 8; x++) byte = byte << 1 | (data[y * 9 + x] > data[y * 9 + x + 1] ? 1 : 0);
+    hex += byte.toString(16).padStart(2, '0');
+  }
+  return hex;
 }
 
 // Hàng đợi: tạo tối đa 2 ảnh cùng lúc, cùng một ảnh thì chỉ tạo một lần.
@@ -165,4 +178,4 @@ function pump() {
   }
 }
 
-module.exports = { hasSharp: !!sharp, hasHeic: !!(sharp && heicDecode), SIZES, sniffType, exifDate, heicDate, imageSize, variantPath, queueVariants, pump };
+module.exports = { hasSharp: !!sharp, hasHeic: !!(sharp && heicDecode), SIZES, sniffType, exifDate, heicDate, imageSize, variantPath, queueVariants, pump, dhash };

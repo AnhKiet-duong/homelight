@@ -21,7 +21,7 @@ Khi sửa code làm thay đổi điều gì ở đây, sửa tài liệu này tr
   Thiếu thư viện nào thì tính năng đó tự tắt, phần còn lại vẫn chạy
   (code không được giả định ảnh nhỏ / HLS / `color` luôn có).
 - Toàn bộ dữ liệu trong `storage/` (không đưa lên git). Comment và thông báo trong code bằng tiếng Việt.
-- README.md (tiếng Anh) là tài liệu cho người dùng; `docs/truy-cap-tu-xa.md` hướng dẫn truy cập từ xa.
+- README.md (tiếng Anh) là tài liệu cho người dùng; `docs/truy-cap-tu-xa.md` hướng dẫn truy cập từ xa; `docs/trien-khai-vps.md` hướng dẫn chạy trên VPS (pm2, nginx, HTTPS), file cấu hình mẫu trong `deploy/`. Đổi cách server dựa vào `X-Forwarded-For` / `X-Forwarded-Proto` / `Host` thì sửa cả tài liệu và `deploy/nginx-homelight.conf`.
 
 ### Sơ đồ file
 
@@ -29,13 +29,19 @@ Khi sửa code làm thay đổi điều gì ở đây, sửa tài liệu này tr
 | --- | --- |
 | `server.js` | Mọi thứ phía server: cấu hình, tài khoản, phiên, API, phục vụ file, thư viện ảnh, nhập ảnh, video pipeline, thư mục liên kết (ổ ngoài) |
 | `media.js` | `SIZES`, `sniffType`, `exifDate`, `heicDate`, `imageSize`, `variantPath`, hàng đợi `queueVariants`/`pump` |
+| `exif.js` | Đọc EXIF đầy đủ (`parseExif`, `readImage`), thẻ video (`fromVideoTags`), đoán nơi chụp (`place`, dữ liệu `data/cities.txt.gz`) (mục 15) |
+| `backup.js` | Sao lưu theo lịch / khôi phục: `run`, `listSnapshots`, `readSnapshot`, `restoreFiles`, `lastSlot` (mục 13) |
 | `video.js` | Chọn ffmpeg, `sniffVideo`, `probe`, `plan`/`QUALITIES`, hàng đợi `posterLane`/`hlsLane`, `makePoster`, `makeRendition`, `cancel`, `masterPlaylist`, `pump` |
 | `public/index.html` | Gallery: lưới ảnh, album, chia sẻ, tải lên, lightbox (zoom), trình phát video, chủ đề, tiết kiệm dữ liệu |
+| `public/extras.js` | Các bảng mở từ menu "Thêm" (thùng rác, bản đồ, ảnh trùng, link chia sẻ), chỉ tải khi mở lần đầu (mục 14) |
+| `public/share.html` | Trang xem album qua link chia sẻ `/s/<token>`, không cần tài khoản, 3 giao diện, ô mật khẩu, lightbox (mục 17) |
+| `public/manifest.webmanifest`, `public/sw.js`, `public/icons/` | Ứng dụng cài được (PWA): manifest, service worker (trang mất mạng, nhận ảnh chia sẻ từ Android), icon (tạo lại bằng `data/make-icons.js`) (mục 18) |
 | `public/account.html` | Tài khoản, ngôn ngữ, mật khẩu; admin: người dùng, cổng, chất lượng video, ổ cứng ngoài |
 | `public/login.html` | Đăng nhập, tạo admin đầu tiên, chọn ngôn ngữ trước khi đăng nhập |
 | `public/slideshow.html` | Trình chiếu 3D, tự đọc `/api/photos`; chỉ giao diện Điện ảnh mở trang này |
 | `public/slideshow-paper.html` | Trình chiếu kiểu Album giấy (ảnh in rơi chồng lên nhau), mặc định cho mọi giao diện khác; dùng chung `i18n/slideshow.js` và cài đặt `slideshow-*` trong localStorage |
 | `public/i18n.js` + `public/i18n/*.js` | Hệ thống đa ngôn ngữ (mục 10) |
+| `public/vendor/leaflet/` | Leaflet 1.9.4 + Leaflet.markercluster 1.5.3 cho bản đồ ảnh (chỉ dùng bản trong máy, không CDN) |
 | `public/vendor/hls.light.min.js` | hls.js 1.7.3 dự phòng khi CDN lỗi (đổi phiên bản thì đổi cả URL CDN trong index.html) |
 
 ---
@@ -46,7 +52,8 @@ Khi sửa code làm thay đổi điều gì ở đây, sửa tài liệu này tr
 
 ```
 storage/
-  settings.json            { port?, videoMode?: 'lite'|'full' }
+  settings.json            { port?, videoMode?: 'lite'|'full', backup?: { dir, freq, hour, keep, last }, secret }
+  shares.json              [{ token, uid, albumId, created, expires|null, pass: { salt, hash }|null, download, theme, views, last }]
   users.json               [{ id, username, role: 'admin'|'user', salt, hash, created, prefs?: { dataSaver?, lang? } }]
   sessions.json            { sha256(token): { uid, exp } }
   links.json               [{ id, uid, name, path, cache: 'drive'|'local', hidden: [rel], created }]
@@ -161,7 +168,11 @@ Các route media trong `handle` viết `return serveVariant(...)` **không có `
 | `GET/POST /api/users`, `PATCH/DELETE /api/users/:id` | admin | xoá người dùng: gỡ link, xoá phiên, `rm -rf users/<id>` (không xoá `import/<username>`) |
 | `GET/POST /api/photos` | phiên | POST: body là file thô (mục 4.2) |
 | `POST /api/photos/bulk` | phiên | `{ ids, public }`, chỉ đổi được `public` |
-| `PATCH/DELETE /api/photos/:id` | phiên, ảnh của mình | PATCH `{ fav?, public?, name? }` |
+| `PATCH/DELETE /api/photos/:id` | phiên, ảnh của mình | PATCH `{ fav?, public?, name? }`; DELETE chuyển vào thùng rác |
+| `GET /api/duplicates`, `POST /api/duplicates/resolve` | phiên, ảnh của mình | nhóm ảnh trùng; resolve `{ groups: [{ keep, remove }] }` (mục 16) |
+| `GET/POST /api/trash`, `POST /api/trash/restore`, `POST /api/trash/purge` | phiên, ảnh của mình | `{ ids }`; purge nhận cả `{ all: true }` (mục 14) |
+| `GET/POST /api/shares`, `PATCH/DELETE /api/shares/:token` | phiên, album của mình | link chia sẻ; POST `{ albumId, days, password?, download, theme }` (mục 17) |
+| `GET /s/<token>`, `GET /s/<token>/info`, `POST /s/<token>/unlock`, `GET /s/<token>/f/<file>` | mở (ai có link) | trang share.html, dữ liệu album, mở khoá mật khẩu, file ảnh / HLS (mục 17) |
 | `GET /api/public` | phiên | ảnh công khai của mọi người (có `owner`, `mine`) |
 | `GET/POST /api/albums`, `PATCH/DELETE /api/albums/:id` | phiên, album của mình | PATCH `{ name?, add?, remove?, cover? }` |
 | `GET/POST /api/import` | phiên | trạng thái / quét ngay (chờ tối đa 1,5 giây) |
@@ -169,6 +180,7 @@ Các route media trong `handle` viết `return serveVariant(...)` **không có `
 | `GET /api/links/browse?path=` | admin | duyệt thư mục máy chủ |
 | `POST /api/links`, `PATCH/DELETE /api/links/:id` | admin | |
 | `POST /api/links/:id/scan`, `POST /api/links/:id/eject` | chủ link hoặc admin | quét lại / kết nối lại; ngắt ổ an toàn |
+| `GET/PUT /api/backup`, `POST /api/backup/run`, `POST /api/backup/restore` | admin | sao lưu tự động (mục 13) |
 
 Người không có quyền với một link nhận 404 (không phải 403). Kiểm tra quyền admin **luôn ở server**;
 việc ẩn panel trong `account.html` chỉ là giao diện.
@@ -188,12 +200,15 @@ Video thêm: `duration`, `fps`, `hls: { '<q>': { kbps, w, h } }` (các mức đ�
 (lỗi vĩnh viễn; tự xoá khi file trên ổ ngoài bị thay. Muốn thử lại bằng tay: **tắt server**, xoá dòng `vfail` trong
 `photos.json`, chạy lại; sửa lúc server chạy thì bị ghi đè).
 Ảnh trên ổ ngoài thêm: `link` (id link), `rel` (đường dẫn trong thư mục), `mtime`.
+Vân tay ảnh: `dhash` (16 ký tự hex, mục 16; không gửi cho trình duyệt).
+Thông tin chụp (mục 15): `exif` (`{ cam, lens, iso, f, exp, fl, lat, lon }`, `{}` là đã đọc mà không có; chưa có trường = chưa đọc), `place` (`{ n, cc }`).
+Ảnh trong thùng rác thêm: `trashed` (thời điểm xoá), `trashAlbums` / `trashCovers` (album đã chứa nó / đã lấy nó làm bìa; mục 14).
 
-`photoView` là **nơi duy nhất** quyết định dữ liệu gửi cho trình duyệt: bỏ `hash`, `hls`, `vfail`, `rel`, `mtime`;
+`photoView` là **nơi duy nhất** quyết định dữ liệu gửi cho trình duyệt: bỏ `hash`, `hls`, `vfail`, `rel`, `mtime`, `trashAlbums`, `trashCovers`, `dhash`;
 thêm `thumb` (`?s=sm`), `preview` (`?s=md`, GIF thì là file gốc để giữ ảnh động); video thêm `hls` (URL master hoặc null),
 `qualities`, `processing`. Trường nội bộ mới không được lộ ra thì thêm vào danh sách bỏ của `photoView`.
 `publicPhotos` dựa trên `photoView` (thêm `owner`, `mine`, ép `fav: false`), nên mọi thứ `photoView` lộ ra cũng lộ cho
-người khác với ảnh công khai. `albumView` tự dựng `coverUrl`/`coverThumb` từ `p.url`, không qua `photoView`.
+người khác với ảnh công khai, **trừ vị trí**: ảnh không phải của người xem đi qua `noLocation` (bỏ `exif.lat/lon` và `place`). `albumView` tự dựng `coverUrl`/`coverThumb` từ `p.url`, không qua `photoView`.
 
 ### 4.2 Ba đường ảnh vào thư viện
 
@@ -242,7 +257,7 @@ Thêm một định dạng mới phải sửa cùng lúc: `IMAGE_TYPES` / `video
   có `link`: bị ẩn khi ổ rút, và chỉ bị xoá trong `forgetPhotos` (file biến mất / gỡ link) khi rỗng. Album ghép vào album
   có sẵn thì không có `link`, nên ảnh nhập và ảnh ổ ngoài có thể nằm chung một album.
 - "Công khai" **không phải** ẩn danh: chỉ tài khoản khác trong gallery xem được (`/shared/...`), vẫn cần đăng nhập.
-- Xoá ảnh: bỏ khỏi mọi album (và `cover`), `dropThumbs`, rồi: ảnh trong máy thì xoá file gốc;
+- Xoá ảnh từ gallery chỉ chuyển vào thùng rác (mục 14). Xoá hẳn (`destroyPhotos`): bỏ khỏi mọi album (và `cover`), `dropThumbs`, rồi: ảnh trong máy thì xoá file gốc;
   **ảnh trên ổ ngoài chỉ bị ẩn** (thêm `rel` vào `links.json` `hidden`), file trên ổ không bao giờ bị đụng tới.
   Chưa có API bỏ ẩn. `dropThumbs` chỉ dừng được ffmpeg HLS; ảnh bìa và sharp đang đọc file vẫn chạy, nên trên Windows
   xoá file gốc có thể lỗi EBUSY (bị nuốt) và để lại file mồ côi trong `images/`. Xoá được cả ảnh của ổ đang rút.
@@ -546,4 +561,139 @@ Trước khi viết code, đi qua danh sách này:
    - Có chạy ở cả 3 chủ đề, trên điện thoại / cảm ứng, với tiết kiệm dữ liệu không?
    - Đã chống chạy đua bằng `view[current] === p` / `vidToken` chưa?
    - Có sửa cả các bản chép `api()` / `toast()` ở trang khác không?
-8. **Tài liệu:** cập nhật README (người dùng) và tài liệu này nếu đổi luồng, quy tắc hay dữ liệu.
+8. **Sao lưu:** file JSON mới trong `storage/`? Thêm vào `stateNow()`, `backup.run`, `readSnapshot` và phần thay dữ liệu của `restoreBackup`.
+9. **Tài liệu:** cập nhật README (người dùng) và tài liệu này nếu đổi luồng, quy tắc hay dữ liệu.
+
+---
+
+## 13. Sao lưu và khôi phục (`backup.js`)
+
+- Cấu hình ở `settings.backup` (`backupConf()` điền mặc định). Đích: `<dir>/homelight-backup/`:
+  `files/<uid>/<p.file>` (file gốc, chỉ chép file mới / khác dung lượng; ảnh ổ ngoài không chép) và
+  `snapshots/<YYYYMMDD-HHMMSS>[-before-restore]/` gồm `users.json`, `links.json`, `shares.json`, `settings.json` (không có `backup`),
+  `users/<uid>/photos.json|albums.json` và `manifest.json` (ghi **cuối cùng**; thư mục được đổi tên từ `.tmp` nên có thư mục là bản đầy đủ).
+- `stateNow()` chụp sâu (JSON) toàn bộ dữ liệu trong bộ nhớ **đồng bộ** lúc bắt đầu, rồi mới chép file: các file trong một bản luôn khớp nhau.
+  Không đọc lại JSON trong `storage/`. Không sao lưu `sessions.json`, ảnh nhỏ, HLS.
+- `prune`: giữ `keep` bản mới nhất, rồi xoá file trong `files/` không còn bản nào nhắc tới (đọc lỗi một bản thì không xoá file nào).
+- Lịch: `backupDue()` mỗi 5 phút (và 1 phút sau khi khởi động); đến hạn khi lần chạy gần nhất trước mốc `lastSlot` (hằng ngày lúc `hour`, hằng tuần Chủ nhật lúc `hour`).
+  Lỗi thì 1 giờ sau thử lại. Mỗi lúc chỉ một lần sao lưu (`backupJob.promise`).
+- Thư mục sao lưu không được nằm trong app, `IMPORT_DIR` hay thư mục liên kết; thư mục liên kết không được nằm trong thư mục sao lưu,
+  và `walkLink` bỏ qua thư mục tên `homelight-backup`.
+- `restoreBackup(id)`:
+  1. Đặt `restoring = true`: mọi API không phải GET trả 503; quét nhập / quét ổ / kiểm tra ổ thành no-op.
+  2. Chờ các lượt quét đang chạy, chờ lần sao lưu đang chạy, rồi **sao lưu trạng thái hiện tại** (`before-restore`); lỗi thì dừng, không khôi phục.
+  3. Huỷ ffmpeg HLS, chờ `videoJobs` trống (tối đa 20 giây).
+  4. Chép lại file gốc còn thiếu vào `images/`.
+  5. Thay `users`, `links`, `shares`, `settings` (giữ `port`, `backup`), xoá `photoCache`/`albumCache`/`linkStates`/`thumbFailed`/`notMedia`/`importStates`,
+     gọi các hàm `save*`, kiểm tra lại các ổ.
+  6. `restoring = false`, `resumeWork()` (cùng việc như lúc khởi động: ảnh nhỏ, video, dọn HLS, quét ổ).
+  Ảnh thêm sau bản sao lưu: file còn trong `images/` nhưng không còn trong danh sách. Phiên đăng nhập giữ nguyên
+  (`sessionOf` tra `users` nên phiên của tài khoản không còn tự mất).
+- Vì object ảnh bị thay khi khôi phục, `processVideo` chỉ xoá thư mục HLS khi **không còn ảnh nào cùng `id`** (không dựa vào `alive()`).
+
+---
+
+## 14. Thùng rác
+
+- Xoá ảnh (`DELETE /api/photos/:id`, `POST /api/trash`) gọi `trashPhotos`: đặt `p.trashed = Date.now()`, ghi lại album đã chứa ảnh
+  (`trashAlbums`) và album lấy ảnh làm bìa (`trashCovers`), bỏ ảnh khỏi các album đó, huỷ ffmpeg nếu là video. Object ảnh **vẫn nằm trong
+  `photos.json`**, file gốc và ảnh nhỏ giữ nguyên.
+- Ảnh có `trashed` bị bỏ khỏi: `visiblePhotos` (nên khỏi `/api/photos`, album, trình chiếu), `publicPhotos` / `findPublicPhoto`,
+  `ownPhotoIds`, tập hash khi nhập (chép lại cùng ảnh vào thư mục nhập thì được thêm mới), `processVideo`.
+  Chủ ảnh vẫn mở được `/uploads/<file>?s=sm` (thùng rác hiện ảnh nhỏ). **Danh sách ảnh mới phải lọc `p.trashed`.**
+- `restoreTrashed`: thêm ảnh lại vào các album trong `trashAlbums` (album còn tồn tại), trả bìa nếu album chưa có bìa khác, xoá ba trường trên,
+  gọi lại `processVideo` cho video.
+- `destroyPhotos(uid, list)` là logic xoá hẳn cũ (mục 4.4), xử lý cả lô: một lần lưu `photos.json` / `albums.json`.
+  `purgeTrash` xoá hẳn ảnh quá `TRASH_DAYS` (30) ngày: 2 phút sau khi khởi động rồi mỗi 6 giờ; bỏ qua khi đang khôi phục sao lưu.
+- Sao lưu chụp cả ảnh trong thùng rác (vẫn ở `photos.json`), nên file gốc của chúng vẫn được giữ trong bản sao lưu.
+- Giao diện: `removePhoto` không hỏi lại mà hiện thông báo có nút "Hoàn tác" (`toast(msg, { label, run })`, hiện 7 giây);
+  thanh chọn nhiều có nút "Xoá" (`trashMany`). Menu "Thêm" (`#toolsMenu`) gọi `openTool(name)`, hàm này tải `extras.js`
+  một lần rồi gọi `extras.open(name)`. `extras.js` tự chèn CSS của nó (cả 3 chủ đề), dùng chung các biến/hàm toàn cục của
+  `index.html` (`t`, `tn`, `esc`, `toast`, `load`, `jsonHeaders`...). Khung bảng dùng chung: `panel(title, sub)` trả `{ body, foot, sub, onClose }`;
+  Esc / bấm nền / nút X đóng bảng. Đóng thùng rác sau khi khôi phục thì `load()` lại gallery.
+
+---
+
+## 15. Thông tin chụp, bộ lọc, dòng thời gian
+
+- `exif.js`:
+  - `parseExif(buf)` đọc khối TIFF: IFD0 (Make/Model -> `cam`, tên hãng được rút gọn), Exif IFD (ISO, FNumber, ExposureTime, FocalLength, LensModel),
+    GPS IFD (`lat`/`lon`, làm tròn 5 chữ số). Nhận cả JPEG (tìm APP1) lẫn khối `Exif\0\0` của sharp.
+  - `readImage(file)`: `sharp(file).metadata().exif` (mọi định dạng, kể cả HEIC, chỉ đọc đầu file); không có sharp thì đọc 256 KB đầu JPEG.
+  - `fromVideoTags(tags)`: `video.probe` trả thêm `tags` (thẻ stream + format); toạ độ ISO 6709 (`location`, `com.apple.quicktime.location.ISO6709`).
+  - `place(lat, lon)`: thành phố gần nhất trong lưới ô 1 độ (5x5 ô quanh điểm), thành phố lớn được trừ tới 15 km (để trung tâm thành phố
+    không ra tên huyện bên cạnh), xa hơn 100 km thì `null`. `data/cities.txt.gz` nạp lần đầu khi cần (~24 nghìn dòng `tên|mã nước|vĩ|kinh|nghìn dân`),
+    tạo bằng `data/make-cities.js` (lọc số dân ≥ 15 nghìn, mọi thị trấn Việt Nam trừ quận nội thành, sửa tên vài thành phố Việt Nam).
+- Server: `setMeta(p, info)` ghi `exif` + `place`. Tải lên JPEG thì đọc ngay từ buffer; còn lại `scheduleMeta()` chạy `readMeta` ở nền
+  (mỗi lúc một file, ảnh ổ ngoài qua `onDrive`, bỏ qua ảnh đang ẩn vì ổ rút; lỗi đọc thì ghi `{}` để không thử lại mãi).
+  Gọi sau khi tải lên, sau `scanImports` / `scanLink` có thay đổi, khi ổ được cắm lại (`st.resumed`) và trong `resumeWork`.
+  File trên ổ ngoài bị thay thì xoá cả `exif`/`place` (trong danh sách xoá của `scanLink`) để đọc lại.
+  Tải lên JPEG không có `X-Taken` thì lấy ngày chụp từ `media.exifDate(buf)`.
+- Giao diện (`index.html`):
+  - `fold()` bỏ dấu (cả đ); `searchText(p)` (cache theo object) gồm tên, chủ, máy ảnh, ống kính, nơi chụp, tên nước (`Intl.DisplayNames`).
+  - `filt` = `{ from, to, cam, place ('VN' hoặc 'VN|Đà Lạt'), kind, gps, bounds }`; `passFilter` áp trong `computeView`. `bounds`
+    (`{ s, w, n, e }`) dành cho bản đồ. `buildFilterMenu` dựng danh sách máy ảnh / nơi chụp từ ảnh đang có mỗi lần mở menu.
+  - Dòng thời gian (`timeline`, localStorage `timeline`): khi sắp theo thời gian, `render` chia tháng (`section.tl-month[data-ym]`,
+    dùng lại `.year-head`) rồi ngày (`.tl-day` + `.day-head`, kèm nơi chụp trong ngày). `#tlRail` một vạch mỗi tháng; `railSpy`
+    (theo scroll, rAF) đánh dấu tháng đang xem và chỉ hiện thanh khi đang xem lưới ảnh.
+  - Lightbox: `placeText`/`shotText` ở dòng phụ (`lbSub`) và bảng thông tin của Album giấy (`lbMeta`).
+- Bản đồ (`extras.js`, `map()`): ảnh có `exif.lat/lon` (của album đang mở nếu có). `loadLeaflet` nạp CSS/JS trong `/vendor/leaflet` một lần.
+  Nền bản đồ CARTO (`TILES` theo giao diện: dark_all / voyager / light_all). Marker là `divIcon` (`.pm`, ảnh nhỏ làm nền: Leaflet ép
+  `width: auto` cho `<img>` trong marker nên không dùng `<img>`); cụm lấy ảnh mới nhất làm bìa và số ảnh. Bấm ảnh: đóng bảng, `openPhoto(p)`
+  (bỏ lọc / về tất cả ảnh nếu ảnh không nằm trong `view`). "Xem ảnh trong vùng này" gọi `setBounds` (đặt `filt.bounds`, kinh độ đã chuẩn hoá về
+  -180..180, vùng rộng hơn 360 độ thì lấy cả thế giới; `passFilter` xử lý vùng vắt qua kinh tuyến 180). `mapState` giữ chỗ đang xem cho lần mở sau.
+
+---
+
+## 16. Ảnh trùng
+
+- `media.dhash(file)`: ảnh nhỏ `sm` -> xám 9x8 -> 64 bit (điểm trái sáng hơn điểm phải), chuỗi hex. `makeVariants` trả thêm `dhash`
+  (cả video, từ ảnh bìa), `makeThumbs` ghi vào `p.dhash`. Ảnh cũ: `readMeta` tính từ ảnh nhỏ đã có (chưa có ảnh nhỏ thì để lần sau).
+  File trên ổ ngoài bị thay thì xoá `dhash` cùng `exif`/`place`.
+- `duplicateGroups(uid)` trên `visiblePhotos`: union-find; cùng `hash` (SHA-1, chỉ ảnh trong máy) là một nhóm; vân tay khác nhau
+  ≤ `SIMILAR_BITS` (5) bit cũng vậy. Tìm cặp bằng 8 dải 8 bit (khác ≤ 5 bit thì có ít nhất 3 dải trùng), bỏ dải quá đông (> 1500),
+  bỏ vân tay gần như một màu (< 4 hoặc > 60 bit 1), bỏ cặp lệch tỉ lệ khung > 15%. Trong nhóm sắp ảnh nên giữ lên đầu:
+  nhiều điểm ảnh, file lớn, có trước. `kind: 'exact'` khi cả nhóm cùng SHA-1; mỗi ảnh có `same` (cùng SHA-1 với ảnh đầu).
+  `pending` = số ảnh chưa có vân tay.
+- `resolveDuplicates`: ảnh giữ lại nhận yêu thích, album (và bìa album) của các bản bị bỏ, rồi các bản đó vào thùng rác (`trashPhotos`).
+- Giao diện: `extras.js` `dupes()`: bấm ảnh để chọn ảnh giữ, "Giữ cả nhóm" để bỏ qua nhóm.
+
+## 17. Link chia sẻ album
+
+- `shares.json` (biến `shares`, `saveShares`), tối đa `SHARE_MAX` (200) link mỗi tài khoản. Token 18 byte ngẫu nhiên (base64url),
+  kiểm tra bằng `SHARE_TOKEN_RE` trước khi tìm. Link trỏ tới album (`albumId`), không chụp lại danh sách ảnh: album đổi thì link đổi theo.
+  Xoá album hoặc xoá người dùng thì xoá link của nó. Sao lưu (mục 13) có `shares.json`; khôi phục gọi `ensureSecret()`.
+- `/s/...` được xử lý bởi `shareRoute` ngay sau `sessionOf`, trước mọi kiểm tra phiên. Luôn gửi `X-Robots-Tag: noindex` và
+  `Referrer-Policy: no-referrer`. `/s/<token>` luôn trả `share.html` (kể cả token sai), trang tự gọi `/info` và báo lỗi:
+  404 link không tồn tại / bị thu hồi, 410 hết hạn.
+- `/info`: tên album, tên đăng nhập chủ album, hạn, giao diện, `locked`; ảnh qua `shareView` (danh sách trường được phép, không có
+  `exif`/`place`/`fav`/`public`/id ổ ngoài; `url`/`size` chỉ khi cho tải gốc). Đếm `views`/`last`, ghi chậm 5 giây (`saveSharesSoon`).
+- Mật khẩu: scrypt như mật khẩu tài khoản. `/unlock` sai `LOGIN_MAX_FAILS` lần theo IP + token thì khoá 15 phút như đăng nhập. Đúng thì đặt cookie
+  `sh_<12 ký tự đầu token>` = HMAC-SHA256(`settings.secret`, token + `:` + salt mật khẩu), `Path=/s/<token>`, HttpOnly, sống tới hạn link
+  (tối đa 30 ngày). Đổi / bỏ mật khẩu đổi salt nên cookie cũ hết hiệu lực. `settings.secret` tạo một lần, không trả qua `/api/settings`.
+- `/f/<file>[?s=sm|ph|md]` và `/f/<file>/hls/...`: chỉ ảnh đang nằm trong album (`visiblePhotos`, nên ảnh trong thùng rác không ra).
+  Không cho tải gốc thì yêu cầu file gốc của ảnh trả `md`; video vẫn trả gốc khi chưa có HLS. Cache `private, max-age=300` để thu hồi có hiệu lực nhanh.
+- Giao diện: nút "Chia sẻ" ở đầu album và menu Thêm → Link chia sẻ mở `extras.js` `share(album?)`. Link ghép từ `location.origin`;
+  mở bằng localhost / 127.x thì hiện cảnh báo. `share.html` đọc `info.theme`, dùng hls.js (CDN, dự phòng `/vendor/hls.light.min.js`
+  nằm trong `OPEN_PAGES`), chuỗi trong `public/i18n/share.js`.
+
+## 18. Ứng dụng cài được (PWA)
+
+- `manifest.webmanifest` (`display: standalone`, icon 192/512 + maskable, `share_target` POST multipart, trường `media`).
+  Icon PNG tạo từ `public/icons/icon.svg` bằng `node data/make-icons.js` (sharp); phần hình nằm trong 50% giữa nên dùng được làm maskable.
+  `index.html`, `login.html`, `account.html` có link manifest + icon; `share.html` chỉ có favicon (không cho cài trang khách).
+- Mở không cần đăng nhập (`OPEN_PAGES`): manifest (trình duyệt tải không kèm cookie), `sw.js`, các file trong `icons/`.
+  MIME `.webmanifest` = `application/manifest+json`.
+- `sw.js` cố ý làm ít, **không cache gì của app**: điều hướng GET thì `fetch` thẳng, lỗi mạng thì trả trang "Không kết nối được"
+  dựng sẵn trong file (503, có icon nhúng). Không đụng `/api`, `/uploads`, `/shared`, `/s/`, HLS, file giao diện (vẫn đi cache HTTP như cũ).
+  Đổi `sw.js` thì trình duyệt tự cập nhật (server trả `no-cache`, `skipWaiting` + `clients.claim`).
+- Chia sẻ vào app (chỉ Android): `sw.js` nhận `POST /share-target`, cất từng file vào Cache `share-inbox` (`X-Name`, `X-Modified`),
+  chuyển 303 tới `/?shared=1`. `index.html` `takeSharedFiles` chạy sau lần `load()` đầu, lấy file ra, xoá khỏi cache, gọi `addFiles`.
+  Chưa đăng nhập thì `/?shared=1` qua trang đăng nhập (`next` giữ query) rồi quay lại, file vẫn còn trong cache.
+  Server: `POST /share-target` tới được server nghĩa là chưa có service worker, bỏ body và chuyển 303 về `/`.
+- Service worker chỉ đăng ký khi `isSecureContext` (HTTPS hoặc localhost). Trên `http://<IP LAN>` không cài được (Chrome đòi HTTPS).
+- Giao diện: menu Thêm → "Cài như ứng dụng" (ẩn khi đang chạy standalone) mở `extras.js` `install()`: có `installPrompt`
+  (`beforeinstallprompt`, giữ trong `index.html`) thì hiện nút Cài đặt; iPhone / iPad thì hướng dẫn Safari → Chia sẻ → Thêm vào MH chính;
+  không phải HTTPS thì giải thích; còn lại chỉ chỗ cài trong menu trình duyệt. Luôn ghi rõ giới hạn (iOS không có share target,
+  không tải lên ngầm, app trên MH chính iOS đăng nhập riêng).
+- `addFiles` gọi `keepAwake(true/false)`: Wake Lock giữ màn hình sáng khi đang tải lên (xin lại khi quay về tab), `beforeunload` hỏi khi đóng trang lúc đang tải.

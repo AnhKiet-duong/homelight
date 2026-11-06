@@ -119,6 +119,7 @@ async function probe(file) {
     duration: Math.round((Number(j.format.duration) || Number(v.duration) || 0) * 10) / 10,
     fps: d ? n / d : 0,
     taken: created > Date.UTC(1971, 0, 1) ? created : null, // máy quay chưa đặt giờ hay ghi năm 1904/1970
+    tags: { ...(v.tags || {}), ...(j.format.tags || {}) }, // máy quay, toạ độ GPS (xem exif.fromVideoTags)
   };
 }
 

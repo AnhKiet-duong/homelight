@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#07070a">
 <title>My Gallery</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Gallery">
 <script src="/i18n.js"></script>
 <script src="/i18n/index.js"></script>
 <script>
@@ -340,6 +344,10 @@
     box-shadow: 0 16px 40px rgba(0,0,0,.4);
   }
   .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.act { display: flex; align-items: center; gap: 14px; padding: 7px 7px 7px 18px; width: max-content; max-width: calc(100vw - 24px); }
+  .toast.act.show { pointer-events: auto; }
+  .toast button { flex: none; height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: rgba(0,0,0,.12); color: inherit; font: inherit; font-weight: 600; }
+  .toast button:hover { background: rgba(0,0,0,.2); }
 
   /* ---------- Ảnh công khai & chọn nhiều ảnh ---------- */
   .tool-btn {
@@ -541,6 +549,74 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   }
+
+  /* ---------- Menu "Thêm": thùng rác... (bảng mở ra nằm trong extras.js) ---------- */
+  .tools-pick { position: relative; flex: none; }
+  .tools-menu { width: 280px; }
+  .tools-menu .ic { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--surface-2); color: var(--gold); }
+  .tools-menu .ic svg { width: 20px; height: 20px; }
+  html[data-theme="paper"] .tools-pick { order: 3; }
+  html[data-theme="paper"] .tools-pick .tool-btn { height: 30px; font-size: 12px; background: var(--card); color: var(--muted); }
+  html[data-theme="bento"] .tools-pick { order: 3; }
+  html[data-theme="bento"] .tools-pick .tool-btn { height: 40px; padding: 0 16px; border: 0; background: var(--tile); color: var(--muted); font-weight: 400; }
+  /* Bộ lọc */
+  .tools-pick .tool-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .tools-pick .tool-btn svg { display: none; width: 17px; height: 17px; flex: none; }
+  @media (max-width: 760px) { /* điện thoại: chỉ hiện biểu tượng để ô tìm kiếm đủ rộng */
+    .tools-pick .tool-btn { padding: 0 11px; }
+    .tools-pick .tool-btn svg { display: block; }
+    .tools-pick .tool-btn span { display: none; }
+    .tl-rail { background: color-mix(in srgb, var(--bg) 80%, transparent); border-radius: 12px 0 0 12px; }
+  }
+  #filterBtn i { font-style: normal; display: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--gold); color: #0b0b0d; font-size: 11px; font-weight: 600; line-height: 18px; }
+  #filterBtn.active { color: var(--text); box-shadow: inset 0 0 0 1.5px var(--gold); }
+  #filterBtn.active i { display: inline-block; }
+  html[data-theme="paper"] #filterBtn i, html[data-theme="bento"] #filterBtn i { color: #fff; }
+  .filter-menu { width: 320px; padding: 8px 14px 14px; }
+  .filter-menu .h { padding-left: 0; padding-right: 0; }
+  .f-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  .f-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; font-size: 12px; color: var(--muted); }
+  .f-field input, .f-field select { width: 100%; min-width: 0; height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; color-scheme: dark; }
+  html[data-theme="paper"] .f-field :is(input, select), html[data-theme="bento"] .f-field :is(input, select) { color-scheme: light; background: var(--bg); }
+  .f-kind { align-self: flex-start; }
+  .f-kind button[aria-checked="true"] { background: var(--text); color: var(--bg); }
+  .f-check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 2px 0 14px; cursor: pointer; }
+  .f-check input { width: 16px; height: 16px; accent-color: var(--gold); }
+  .f-bounds { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -4px 0 14px; padding: 8px 8px 8px 12px; border-radius: 10px; background: var(--surface-2); font-size: 12px; }
+  .f-bounds .btn { height: 28px; padding: 0 12px; font-size: 12px; }
+  .f-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--faint); }
+  .f-foot .btn { height: 34px; padding: 0 14px; font-size: 13px; }
+  /* Dòng thời gian: tháng -> ngày, thanh nhảy nhanh bên phải */
+  .tl-day { margin-bottom: 26px; }
+  .tl-month .year-num { font-size: clamp(44px, 6vw, 84px); }
+  html[data-theme="paper"] .tl-month:has(.year-head) { grid-template-columns: 150px 1fr; }
+  html[data-theme="paper"] .tl-month .year-num { font-size: 38px; }
+  html[data-theme="bento"] .tl-month .year-num { font-size: 22px; }
+  .day-head { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 12px; }
+  .day-head b { font-family: var(--serif); font-weight: 400; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .day-head span { font-size: 13px; color: var(--muted); }
+  .day-head i { font-style: normal; font-size: 12px; color: var(--faint); }
+  .day-head i::before { content: "·"; margin-right: 10px; }
+  html[data-theme="bento"] .day-head b { font-family: inherit; font-weight: 600; font-size: 20px; }
+  .tl-rail { position: fixed; right: 6px; top: 50%; transform: translateY(-50%); z-index: 45; max-height: 72vh; overflow-y: auto; scrollbar-width: none;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding: 8px 4px; border-radius: 14px;
+    opacity: 0; visibility: hidden; transition: opacity .25s, visibility .25s; }
+  .tl-rail.show { opacity: 1; visibility: visible; }
+  .tl-rail::-webkit-scrollbar { display: none; }
+  .tl-rail:hover { background: color-mix(in srgb, var(--bg) 85%, transparent); }
+  .tl-rail b { font-size: 11px; font-weight: 600; color: var(--muted); margin: 6px 2px 2px; cursor: pointer; }
+  .tl-rail button { display: flex; align-items: center; justify-content: flex-end; gap: 6px; height: 14px; padding: 0 2px; border: 0; background: none; color: var(--faint); font-size: 10px; }
+  .tl-rail button span { opacity: 0; transition: opacity .2s; white-space: nowrap; }
+  .tl-rail:hover button span, .tl-rail button.on span { opacity: 1; }
+  .tl-rail button::after { content: ""; width: 10px; height: 2px; border-radius: 2px; background: currentColor; opacity: .6; }
+  .tl-rail button:hover, .tl-rail button.on { color: var(--gold); }
+  .tl-rail button.on::after { width: 16px; opacity: 1; }
+  body.lb-open .tl-rail, body.selecting .tl-rail { display: none; }
+  @media (max-width: 760px) {
+    .tl-rail { right: 0; padding: 6px 2px; }
+    .tl-rail button span { display: none; }
+  }
+  html[data-theme="bento"] .tools-menu .ic { background: var(--accent-soft); color: var(--gold); }
 
   /* ---------- Chọn giao diện (dùng cho cả hai giao diện) ---------- */
   .theme-pick { position: relative; }
@@ -1173,6 +1249,7 @@
     html[data-theme="bento"] .toolbar-inner { flex-wrap: wrap; row-gap: 8px; }
     html[data-theme="bento"] .search { flex: 1 1 0; }
     html[data-theme="bento"] #selBtn { margin-left: 0; order: 1; }
+    html[data-theme="bento"] .tools-pick { order: 1; }
     html[data-theme="bento"] .seg { flex: 1 1 100%; order: 2; overflow-x: auto; scrollbar-width: none; }
     html[data-theme="bento"] .seg button { flex: none; height: 36px; padding: 0 14px; }
     html[data-theme="bento"] main { padding: 4px 14px 130px; }
@@ -1364,7 +1441,7 @@
   <div class="toolbar-inner">
     <label class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="q" type="search" placeholder="Tìm theo tên ảnh…" aria-label="Tìm ảnh">
+      <input id="q" type="search" placeholder="Tìm theo tên, nơi chụp, máy ảnh…" aria-label="Tìm ảnh">
     </label>
     <div class="seg" id="seg" role="tablist" aria-label="Sắp xếp và lọc">
       <span class="pill" id="segPill"></span>
@@ -1375,6 +1452,30 @@
       <button data-mode="shared" title="Ảnh mọi người đã công khai">Ảnh chung</button>
     </div>
     <button class="tool-btn" id="selBtn" title="Chọn nhiều ảnh để công khai, chuyển riêng tư hoặc tải về">Chọn</button>
+    <div class="tools-pick" id="filterPick">
+      <button class="tool-btn" id="filterBtn" aria-haspopup="true" aria-expanded="false" title="Lọc theo ngày, máy ảnh, nơi chụp" aria-label="Lọc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/></svg><span>Lọc</span><i id="filterN"></i></button>
+      <div class="theme-menu filter-menu" id="filterMenu" role="dialog" aria-label="Lọc ảnh" hidden>
+        <div class="h">Lọc ảnh</div>
+        <div class="f-row"><label class="f-field"><span>Từ ngày</span><input type="date" id="fFrom"></label><label class="f-field"><span>Đến ngày</span><input type="date" id="fTo"></label></div>
+        <label class="f-field"><span>Máy ảnh</span><select id="fCam"></select></label>
+        <label class="f-field"><span>Nơi chụp</span><select id="fPlace"></select></label>
+        <div class="f-field"><span>Loại</span><span class="lang-seg f-kind" id="fKind" role="group"><button data-k="" aria-checked="true">Tất cả</button><button data-k="image">Ảnh</button><button data-k="video">Video</button></span></div>
+        <label class="f-check"><input type="checkbox" id="fGps"><span>Chỉ ảnh có vị trí GPS</span></label>
+        <div class="f-bounds" id="fBounds" hidden><span>Chỉ ảnh trong vùng đã chọn trên bản đồ</span><button class="btn" id="fBoundsX">Bỏ</button></div>
+        <div class="f-foot"><span id="fCount"></span><button class="btn" id="fClear">Xoá bộ lọc</button></div>
+      </div>
+    </div>
+    <div class="tools-pick" id="toolsPick">
+      <button class="tool-btn" id="toolsBtn" aria-haspopup="true" aria-expanded="false" aria-label="Thêm"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg><span>Thêm</span></button>
+      <div class="theme-menu tools-menu" id="toolsMenu" role="menu" aria-label="Công cụ" hidden>
+        <button class="opt" role="menuitemcheckbox" aria-checked="false" id="tlOpt"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M7 7h5M12 12h5M7 17h5"/><circle cx="12" cy="7" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="17" r="1.5"/></svg></span><span><b>Dòng thời gian</b><small>Chia ảnh theo từng ngày, có thanh nhảy nhanh theo tháng</small></span><span class="tgl"></span></button>
+        <button class="opt" role="menuitem" data-tool="map"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg></span><span><b>Bản đồ ảnh</b><small>Xem ảnh theo nơi chụp (vị trí GPS)</small></span></button>
+        <button class="opt" role="menuitem" data-tool="dupes"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></span><span><b>Ảnh trùng</b><small>Tìm ảnh giống hệt hoặc rất giống nhau để dọn bớt</small></span></button>
+        <button class="opt" role="menuitem" data-tool="share"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span><span><b>Link chia sẻ</b><small>Các link album bạn đã gửi, thu hồi khi cần</small></span></button>
+        <button class="opt" role="menuitem" data-tool="trash"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></span><span><b>Thùng rác</b><small>Ảnh đã xoá, giữ 30 ngày</small></span></button>
+        <button class="opt" role="menuitem" data-tool="install" id="installOpt"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 7v7M9 11l3 3 3-3M10 18h4"/></svg></span><span><b>Cài như ứng dụng</b><small>Mở gallery từ màn hình chính, toàn màn hình</small></span></button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1383,6 +1484,7 @@
   <div class="album-head" id="albumHead" hidden>
     <h2 id="albumName"></h2>
     <span class="count" id="albumCount"></span>
+    <button class="btn" id="albumShare">Chia sẻ</button>
     <button class="btn" id="albumRename">Đổi tên</button>
     <button class="btn" id="albumDelete">Xoá album</button>
   </div>
@@ -1398,6 +1500,7 @@
 <div class="drop" id="drop"><div class="box"><div><b>Thả để lưu giữ</b><span>Ảnh và video sẽ được thêm vào bộ sưu tập</span></div></div></div>
 <div class="upl" id="upl"><div class="t"><b id="uplText">Đang tải lên</b><span id="uplCount"></span></div><div class="bar"><i id="uplBar"></i></div></div>
 <div class="toast" id="toast"></div>
+<nav class="tl-rail" id="tlRail" aria-label="Nhảy tới tháng" hidden></nav>
 <div class="selbar" id="selbar" role="toolbar" aria-label="Thao tác với ảnh đã chọn">
   <b id="selCount">Đã chọn 0</b>
   <button class="btn" id="selAll">Chọn tất cả</button>
@@ -1407,6 +1510,7 @@
   <button class="btn" id="selUnalbum">Bỏ khỏi album</button>
   <button class="btn" id="selCover">Làm ảnh bìa</button>
   <button class="btn" id="selDownload">Tải về</button>
+  <button class="btn" id="selDelete">Xoá</button>
   <button class="btn" id="selDone">Xong</button>
 </div>
 
@@ -1514,9 +1618,16 @@ const curAlbum = () => isShared() ? null : albums.find(a => a.id === albumId) ||
 const esc = t => String(t).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const starSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></svg>';
 
-function toast(msg) {
-  const t = $('toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2400);
+// action: { label, run } -> thêm nút trong thông báo (vd. "Hoàn tác"), hiện lâu hơn để kịp bấm
+function toast(msg, action) {
+  const t = $('toast'); t.textContent = msg; t.classList.toggle('act', !!action);
+  if (action) {
+    const b = document.createElement('button'); b.textContent = action.label;
+    b.onclick = () => { t.classList.remove('show'); action.run(); };
+    t.append(b);
+  }
+  t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), action ? 7000 : 2400);
 }
 
 // ---------- Màu chủ đạo của ảnh (dùng cho ánh sáng nền và viền phát sáng) ----------
@@ -1684,10 +1795,10 @@ function updateBento() {
 async function openPhoto(p) {
   if (!p) return;
   let i = view.indexOf(p);
-  if (i < 0) {
-    $('q').value = ''; albumId = null;
-    if (mode === 'fav' || isShared()) await setMode('new'); else render();
-    i = view.indexOf(p);
+  if (i < 0) { // đang lọc / ở album khác (vd. mở từ bản đồ): về tất cả ảnh, bỏ lọc
+    $('q').value = ''; albumId = null; Object.assign(filt, NO_FILTER);
+    if (mode === 'fav' || (isShared() && !shared.includes(p))) await setMode('new'); else render();
+    syncFilter(); i = view.indexOf(p);
   }
   if (i >= 0) openLB(i, document.querySelector(`.card[data-id="${p.id}"] img`));
 }
@@ -1710,11 +1821,162 @@ $('bTab').addEventListener('click', e => {
 $('bFeat').onclick = () => openPhoto(heroList[heroIdx]);
 $('bMemo').onclick = () => openPhoto(memoPhoto);
 
+// ---------- Thông tin chụp (server đọc EXIF: p.exif = { cam, lens, iso, f, exp, fl, lat, lon }, p.place = { n, cc }) ----------
+let regionNames = null;
+const countryName = cc => {
+  try { regionNames ||= new Intl.DisplayNames([i18n.locale], { type: 'region' }); return regionNames.of(cc) || cc; } catch { return cc; }
+};
+const placeText = p => p.place ? `${p.place.n}, ${countryName(p.place.cc)}` : '';
+const shotText = e => !e ? '' : [e.f && 'f/' + e.f, e.exp && (e.exp >= 1 ? e.exp + 's' : '1/' + Math.round(1 / e.exp) + 's'), e.iso && 'ISO ' + e.iso, e.fl && e.fl + 'mm'].filter(Boolean).join(' · ');
+const hasGps = p => !!p.exif && 'lat' in p.exif;
+// Tìm không dấu: "da lat" khớp "Đà Lạt"
+const fold = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+const searchCache = new WeakMap();
+function searchText(p) {
+  let s = searchCache.get(p);
+  if (s === undefined || s.k !== p.name + (p.place?.n || '') + (p.exif?.cam || '')) {
+    s = { k: p.name + (p.place?.n || '') + (p.exif?.cam || ''), v: fold([p.name, p.owner, p.exif?.cam, p.exif?.lens, p.place?.n, p.place && countryName(p.place.cc)].filter(Boolean).join(' ')) };
+    searchCache.set(p, s);
+  }
+  return s.v;
+}
+
+// ---------- Bộ lọc: ngày, máy ảnh, nơi chụp, loại, có GPS (bản đồ thêm bounds: vùng đang xem) ----------
+const NO_FILTER = { from: '', to: '', cam: '', place: '', kind: '', gps: false, bounds: null };
+const filt = { ...NO_FILTER };
+const filterCount = () => [filt.from || filt.to, filt.cam, filt.place, filt.kind, filt.gps, filt.bounds].filter(Boolean).length;
+function passFilter(p) {
+  const w = when(p);
+  if (filt.from && w < new Date(filt.from + 'T00:00').getTime()) return false;
+  if (filt.to && w >= new Date(filt.to + 'T00:00').getTime() + 864e5) return false;
+  if (filt.cam && (p.exif?.cam || '') !== filt.cam) return false;
+  if (filt.place) {
+    const [cc, n] = filt.place.split('|');
+    if (!p.place || p.place.cc !== cc || (n && p.place.n !== n)) return false;
+  }
+  if (filt.kind && (isVideo(p) ? 'video' : 'image') !== filt.kind) return false;
+  if ((filt.gps || filt.bounds) && !hasGps(p)) return false;
+  if (filt.bounds) {
+    const { s, w: west, n, e } = filt.bounds, { lat, lon } = p.exif;
+    if (lat < s || lat > n || (west <= e ? lon < west || lon > e : lon < west && lon > e)) return false;
+  }
+  return true;
+}
+function toggleFilterMenu(open) {
+  if (open) buildFilterMenu();
+  $('filterMenu').hidden = !open;
+  $('filterBtn').setAttribute('aria-expanded', open);
+}
+// Danh sách máy ảnh / nơi chụp lấy từ ảnh đang có (kèm số ảnh), dựng lại mỗi lần mở
+function buildFilterMenu() {
+  const src = isShared() ? shared : photos, cams = new Map(), places = new Map();
+  for (const p of src) {
+    if (p.exif?.cam) cams.set(p.exif.cam, (cams.get(p.exif.cam) || 0) + 1);
+    if (p.place) {
+      const c = places.get(p.place.cc) || places.set(p.place.cc, { n: 0, cities: new Map() }).get(p.place.cc);
+      c.n++; c.cities.set(p.place.n, (c.cities.get(p.place.n) || 0) + 1);
+    }
+  }
+  const opt = (v, label, sel) => `<option value="${esc(v)}"${sel ? ' selected' : ''}>${esc(label)}</option>`;
+  $('fCam').innerHTML = opt('', cams.size ? t('Mọi máy ảnh') : t('Chưa có thông tin máy ảnh'))
+    + [...cams].sort((a, b) => b[1] - a[1]).map(([c, n]) => opt(c, `${c} (${n})`, filt.cam === c)).join('');
+  $('fPlace').innerHTML = opt('', places.size ? t('Mọi nơi') : t('Chưa có ảnh nào có vị trí'))
+    + [...places].sort((a, b) => b[1].n - a[1].n).map(([cc, c]) => `<optgroup label="${esc(countryName(cc))}">`
+      + opt(cc, t('{0} (tất cả, {1})', countryName(cc), c.n), filt.place === cc)
+      + [...c.cities].sort((a, b) => b[1] - a[1]).map(([n, k]) => opt(cc + '|' + n, `${n} (${k})`, filt.place === cc + '|' + n)).join('') + '</optgroup>').join('');
+  $('fCam').disabled = !cams.size; $('fPlace').disabled = !places.size;
+  $('fFrom').value = filt.from; $('fTo').value = filt.to; $('fGps').checked = filt.gps;
+  $('fBounds').hidden = !filt.bounds;
+  $('fKind').querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', b.dataset.k === filt.kind));
+  syncFilter();
+}
+function syncFilter() {
+  const n = filterCount();
+  $('filterBtn').classList.toggle('active', n > 0);
+  $('filterN').textContent = n || '';
+  $('fCount').textContent = n ? tn('{0} ảnh khớp', view.length) : '';
+  $('fClear').disabled = !n;
+}
+function setFilter(patch) {
+  Object.assign(filt, patch);
+  render(); syncFilter();
+}
+function clearFilter() {
+  setFilter(NO_FILTER);
+  if (!$('filterMenu').hidden) buildFilterMenu();
+}
+// Từ bản đồ: "Xem ảnh trong vùng này"
+function setBounds(b) {
+  setFilter({ bounds: b });
+  document.getElementById('gallery').scrollIntoView({ behavior: 'smooth' });
+  toast(tn('Đang xem {0} ảnh trong vùng đã chọn trên bản đồ', view.length), { label: t('Bỏ lọc'), run: () => setFilter({ bounds: null }) });
+}
+$('filterBtn').onclick = e => { e.stopPropagation(); toggleFilterMenu($('filterMenu').hidden); };
+$('fFrom').onchange = () => setFilter({ from: $('fFrom').value });
+$('fTo').onchange = () => setFilter({ to: $('fTo').value });
+$('fCam').onchange = () => setFilter({ cam: $('fCam').value });
+$('fPlace').onchange = () => setFilter({ place: $('fPlace').value });
+$('fGps').onchange = () => setFilter({ gps: $('fGps').checked });
+$('fKind').onclick = e => {
+  const b = e.target.closest('[data-k]'); if (!b) return;
+  $('fKind').querySelectorAll('button').forEach(x => x.setAttribute('aria-checked', x === b));
+  setFilter({ kind: b.dataset.k });
+};
+$('fClear').onclick = clearFilter;
+$('fBoundsX').onclick = () => { setFilter({ bounds: null }); buildFilterMenu(); };
+addEventListener('click', e => { if (!$('filterPick').contains(e.target)) toggleFilterMenu(false); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('filterMenu').hidden) { toggleFilterMenu(false); $('filterBtn').focus(); } });
+
+// ---------- Dòng thời gian: chia theo ngày (lưu lựa chọn trong trình duyệt) ----------
+let timeline = false;
+try { timeline = localStorage.getItem('timeline') === '1'; } catch {}
+function setTimeline(on) {
+  timeline = on;
+  try { localStorage.setItem('timeline', on ? '1' : '0'); } catch {}
+  $('tlOpt').setAttribute('aria-checked', on);
+  render();
+}
+$('tlOpt').setAttribute('aria-checked', timeline);
+// Thanh nhảy nhanh: mỗi tháng một vạch, bấm để cuộn tới; vạch của tháng đang xem sáng lên
+function buildRail(months) {
+  const rail = $('tlRail');
+  rail.hidden = !months.length;
+  if (!months.length) { rail.innerHTML = ''; return; }
+  let html = '', lastY = null;
+  for (const m of months) {
+    if (m.year !== lastY) { html += `<b data-ym="${m.key}">${m.year}</b>`; lastY = m.year; }
+    html += `<button data-ym="${m.key}" title="${esc(monthName(m.month) + ' ' + m.year)}"><span>${esc(monthName(m.month))}</span></button>`;
+  }
+  rail.innerHTML = html;
+  railSpy();
+}
+$('tlRail').onclick = e => {
+  const b = e.target.closest('[data-ym]'); if (!b) return;
+  document.querySelector(`.tl-month[data-ym="${b.dataset.ym}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+let railRaf = 0;
+function railSpy() {
+  railRaf = 0;
+  if ($('tlRail').hidden) return;
+  const r = $('sections').getBoundingClientRect();
+  $('tlRail').classList.toggle('show', r.top < innerHeight * .5 && r.bottom > innerHeight * .3); // chỉ hiện khi đang xem lưới ảnh
+  let cur = null;
+  const atEnd = innerHeight + scrollY >= document.documentElement.scrollHeight - 4; // cuối trang: tháng cuối có thể không cuộn lên được
+  for (const sec of document.querySelectorAll('.tl-month')) { if (sec.getBoundingClientRect().top < innerHeight * (atEnd ? .9 : .4)) cur = sec.dataset.ym; else break; }
+  cur ??= document.querySelector('.tl-month')?.dataset.ym;
+  $('tlRail').querySelectorAll('button').forEach(b => {
+    const on = b.dataset.ym === cur;
+    if (on && !b.classList.contains('on')) b.scrollIntoView({ block: 'nearest' });
+    b.classList.toggle('on', on);
+  });
+}
+addEventListener('scroll', () => { if (!railRaf) railRaf = requestAnimationFrame(railSpy); }, { passive: true });
+
 // ---------- Lưới ảnh ----------
 function computeView() {
-  const q = $('q').value.trim().toLowerCase();
+  const q = fold($('q').value.trim());
   const album = curAlbum(), inAlbum = album && new Set(album.photoIds);
-  let list = (isShared() ? shared : photos).filter(p => !inAlbum || inAlbum.has(p.id)).filter(p => p.name.toLowerCase().includes(q) || (p.owner || '').includes(q));
+  let list = (isShared() ? shared : photos).filter(p => (!inAlbum || inAlbum.has(p.id)) && (!q || searchText(p).includes(q)) && passFilter(p));
   if (mode === 'fav') list = list.filter(p => p.fav);
   list.sort((a, b) =>
     mode === 'old' ? when(a) - when(b) :
@@ -1805,17 +2067,43 @@ function render() {
     : 'Kéo thả ảnh vào đây, dán bằng Ctrl+V, hoặc chọn từ máy.');
   $('emptyUpload').hidden = !none || isShared();
 
-  // Sắp theo thời gian thì chia nhóm theo năm (giao diện Ô màu: theo tháng)
-  const groups = [], byMonth = isBento();
-  if (mode === 'new' || mode === 'old' || isShared()) {
+  // Sắp theo thời gian thì chia nhóm theo năm (giao diện Ô màu: theo tháng); dòng thời gian: tháng, trong đó từng ngày
+  const groups = [], byTime = mode === 'new' || mode === 'old' || isShared(), byDay = timeline && byTime, byMonth = isBento() || byDay;
+  if (byTime) {
     for (const p of view) {
       const d = new Date(when(p)), y = d.getFullYear(), key = byMonth ? y * 12 + d.getMonth() : y;
       if (!groups.length || groups.at(-1).key !== key) groups.push({ key, year: y, month: d.getMonth(), items: [] });
       groups.at(-1).items.push(p);
     }
   } else if (view.length) groups.push({ items: view });
+  buildRail(byDay ? groups : []);
 
   let i = 0;
+  if (byDay) {
+    const fmtDay = new Intl.DateTimeFormat(i18n.locale, { weekday: 'long' });
+    for (const g of groups) {
+      const sec = document.createElement('section'); sec.className = 'year tl-month'; sec.dataset.ym = g.key;
+      sec.innerHTML = `<div class="year-head"><h2 class="year-num">${monthName(g.month)}</h2>
+        <div class="year-meta"><b>${g.year}</b><span>${tn('{0} ảnh', g.items.length)}</span></div></div><div class="tl-days"></div>`;
+      const days = [];
+      for (const p of g.items) {
+        const d = new Date(when(p)).getDate();
+        if (!days.length || days.at(-1).d !== d) days.push({ d, date: new Date(when(p)), items: [] });
+        days.at(-1).items.push(p);
+      }
+      for (const day of days) {
+        const box = document.createElement('div'); box.className = 'tl-day';
+        const where = [...new Set(day.items.map(p => p.place?.n).filter(Boolean))].slice(0, 3).join(', ');
+        box.innerHTML = `<div class="day-head"><b>${day.d}</b><span>${esc(fmtDay.format(day.date))}</span><i>${esc([where, tn('{0} ảnh', day.items.length)].filter(Boolean).join(' · '))}</i></div>`;
+        const grid = document.createElement('div'); grid.className = 'grid';
+        for (const p of day.items) grid.appendChild(makeCard(p, i++));
+        box.appendChild(grid); sec.lastChild.appendChild(box);
+      }
+      $('sections').appendChild(sec);
+    }
+    if (selecting) updateSelbar();
+    return;
+  }
   for (const g of groups) {
     const sec = document.createElement('section'); sec.className = 'year';
     if (g.year && byMonth) {
@@ -1935,11 +2223,23 @@ function sendFile(file, headers, onProgress) {
 }
 
 let uploading = false;
+// Đang tải lên: giữ màn hình sáng (điện thoại tắt màn hình là trình duyệt dừng tải), đóng trang thì hỏi lại
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && !wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { /* trình duyệt không cho: bỏ qua */ }
+}
+document.addEventListener('visibilitychange', () => { if (uploading && document.visibilityState === 'visible') keepAwake(true); });
+addEventListener('beforeunload', e => { if (uploading) e.preventDefault(); });
 async function addFiles(files) {
   const imgs = [...files].filter(f => f.type.startsWith('image/') || isHeicFile(f) || isVideoFile(f));
   if (!imgs.length) { toast(t('Không có file ảnh hoặc video hợp lệ')); return; }
   if (uploading) { toast(t('Đang tải ảnh khác, đợi chút nhé')); return; }
-  uploading = true;
+  uploading = true; keepAwake(true);
   const upl = $('upl'); upl.classList.add('show');
   let ok = 0, failed = 0;
   for (const [i, f] of imgs.entries()) {
@@ -1964,7 +2264,7 @@ async function addFiles(files) {
   $('uplText').textContent = failed ? t('Xong — lỗi {0} file', failed) : t('Hoàn tất');
   $('uplCount').textContent = tn('{0} file mới', ok);
   setTimeout(() => upl.classList.remove('show'), 1800);
-  uploading = false;
+  uploading = false; keepAwake(false);
   // Đang xem một album thì ảnh vừa tải lên được thêm luôn vào album đó
   const album = curAlbum(), added = photos.slice(-ok).map(p => p.id);
   if (album && ok) {
@@ -2029,10 +2329,10 @@ function toggleSel(p, card) {
 function updateSelbar() {
   $('selbar').classList.toggle('show', selecting);
   $('selCount').textContent = t('Đã chọn {0} ảnh', selected.size);
-  $('selPublic').hidden = $('selPrivate').hidden = $('selAlbum').hidden = isShared();
+  $('selPublic').hidden = $('selPrivate').hidden = $('selAlbum').hidden = $('selDelete').hidden = isShared();
   $('selUnalbum').hidden = !curAlbum();
   $('selCover').hidden = !curAlbum() || selected.size !== 1;
-  for (const id of ['selPublic', 'selPrivate', 'selAlbum', 'selUnalbum', 'selDownload']) $(id).disabled = !selected.size;
+  for (const id of ['selPublic', 'selPrivate', 'selAlbum', 'selUnalbum', 'selDownload', 'selDelete']) $(id).disabled = !selected.size;
   $('selAll').textContent = view.length && view.every(p => selected.has(p.id)) ? t('Bỏ chọn hết') : t('Chọn tất cả');
 }
 const selectedPhotos = () => view.filter(p => selected.has(p.id));
@@ -2065,6 +2365,7 @@ $('selAll').onclick = () => {
 $('selPublic').onclick = () => setPublicMany(true);
 $('selPrivate').onclick = () => setPublicMany(false);
 $('selDownload').onclick = () => { downloadMany(selectedPhotos()); setSelecting(false); };
+$('selDelete').onclick = trashMany;
 addEventListener('keydown', e => { if (e.key === 'Escape' && selecting && !lb.classList.contains('open')) setSelecting(false); });
 
 // ---------- Album ----------
@@ -2210,6 +2511,7 @@ async function setCover() {
 $('selAlbum').onclick = addToAlbum;
 $('selUnalbum').onclick = removeFromAlbum;
 $('selCover').onclick = setCover;
+$('albumShare').onclick = () => { const a = curAlbum(); if (a) openTool('share', a); };
 $('albumRename').onclick = async () => {
   const album = curAlbum(); if (!album) return;
   const name = await askName(t('Đổi tên album'), album.name);
@@ -2243,8 +2545,7 @@ async function toggleFav(p) {
 async function removePhoto(p) {
   if (isShared()) return;
   const vid = isVideo(p);
-  // Ảnh trên ổ cứng ngoài (thư mục liên kết): chỉ ẩn khỏi gallery, file trên ổ giữ nguyên
-  if (!confirm(t(p.link ? (vid ? 'Ẩn video "{0}" khỏi gallery?\nFile trên ổ cứng ngoài vẫn giữ nguyên.' : 'Ẩn ảnh "{0}" khỏi gallery?\nFile trên ổ cứng ngoài vẫn giữ nguyên.') : (vid ? 'Xoá video "{0}"?' : 'Xoá ảnh "{0}"?'), p.name))) return;
+  // Không hỏi lại: ảnh vào thùng rác (giữ 30 ngày), bấm "Hoàn tác" trong thông báo để lấy lại
   try { await api('DELETE', '/' + p.id); }
   catch (e) { toast(t('Không xoá được: {0}', e.message)); return; }
   photos = photos.filter(x => x.id !== p.id);
@@ -2254,7 +2555,30 @@ async function removePhoto(p) {
     if (!view.length) closeLB();
     else { current = Math.min(current, view.length - 1); buildStrip(); setLB(0); }
   }
-  toast(t(p.link ? (vid ? 'Đã ẩn video' : 'Đã ẩn ảnh') : (vid ? 'Đã xoá video' : 'Đã xoá ảnh')));
+  toast(t(vid ? 'Đã chuyển video vào thùng rác' : 'Đã chuyển ảnh vào thùng rác'), { label: t('Hoàn tác'), run: () => restoreFromTrash([p.id]) });
+}
+async function restoreFromTrash(ids) {
+  try {
+    const res = await fetch('/api/trash/restore', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ids }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(t(data.error) || t('Lỗi {0}', res.status));
+    await load();
+    toast(tn('Đã khôi phục {0} ảnh', data.restored));
+  } catch (e) { toast(t('Không khôi phục được: {0}', e.message)); }
+}
+async function trashMany() {
+  const ids = selectedPhotos().map(p => p.id);
+  if (!ids.length) return;
+  try {
+    const res = await fetch('/api/trash', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ids }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(t(data.error) || t('Lỗi {0}', res.status));
+  } catch (e) { toast(t('Không xoá được: {0}', e.message)); return; }
+  const gone = new Set(ids);
+  photos = photos.filter(p => !gone.has(p.id));
+  if (albums.some(a => a.photoIds.some(x => gone.has(x)))) await loadAlbums();
+  setSelecting(false); render();
+  toast(tn('Đã chuyển {0} ảnh vào thùng rác', ids.length), { label: t('Hoàn tác'), run: () => restoreFromTrash(ids) });
 }
 
 // ---------- Lightbox (mở ra từ đúng vị trí tấm ảnh) ----------
@@ -2367,12 +2691,15 @@ addEventListener('resize', () => { const p = view[current]; lbZoomReset(); if (p
 function syncLB() {
   const p = view[current]; if (!p) return;
   $('lbDate').textContent = fmtLong.format(new Date(when(p)));
-  $('lbSub').textContent = [cleanName(p.name), `${current + 1} / ${view.length}`, isVideo(p) && p.duration ? fmtDur(p.duration) : '', p.w ? `${p.w}×${p.h}` : '', fmtSize(p.size)].filter(Boolean).join('  ·  ');
+  $('lbSub').textContent = [cleanName(p.name), `${current + 1} / ${view.length}`, placeText(p), isVideo(p) && p.duration ? fmtDur(p.duration) : '', p.w ? `${p.w}×${p.h}` : '', fmtSize(p.size)].filter(Boolean).join('  ·  ');
   $('lbFav').classList.toggle('on', p.fav);
   $('lbPos').textContent = t(isVideo(p) ? 'Video {0} / {1}' : 'Ảnh {0} / {1}', current + 1, view.length);
   $('lbFile').textContent = p.name;
   const inAlbums = isShared() ? [] : albums.filter(a => a.photoIds.includes(p.id)).map(a => a.name);
   $('lbMeta').innerHTML = [
+    p.place ? [t('Nơi chụp'), placeText(p)] : null,
+    p.exif?.cam ? [t('Máy ảnh'), p.exif.cam + (p.exif.lens && !p.exif.cam.includes(p.exif.lens) ? ' · ' + p.exif.lens : '')] : null,
+    shotText(p.exif) ? [t('Thông số'), shotText(p.exif)] : null,
     p.w ? [t('Kích thước'), `${p.w} × ${p.h}`] : null,
     isVideo(p) && p.duration ? [t('Thời lượng'), fmtDur(p.duration)] : null,
     [t('Dung lượng'), fmtSize(p.size)],
@@ -2804,6 +3131,28 @@ $('themeMenu').addEventListener('click', e => {
   applyTheme(o.dataset.theme); toggleThemeMenu(false);
 });
 addEventListener('click', e => { if (!$('themePick').contains(e.target)) toggleThemeMenu(false); });
+// ---------- Menu "Thêm": các bảng công cụ nằm trong extras.js, chỉ tải khi mở lần đầu ----------
+function toggleToolsMenu(open) {
+  $('toolsMenu').hidden = !open;
+  $('toolsBtn').setAttribute('aria-expanded', open);
+}
+let extrasLoading = null;
+function openTool(name, arg) {
+  extrasLoading ||= new Promise((ok, fail) => {
+    const s = document.createElement('script'); s.src = '/extras.js'; s.onload = ok;
+    s.onerror = () => { extrasLoading = null; fail(new Error(t('Không kết nối được server'))); };
+    document.head.append(s);
+  });
+  return extrasLoading.then(() => extras.open(name, arg)).catch(e => toast(e.message));
+}
+$('toolsBtn').onclick = e => { e.stopPropagation(); toggleToolsMenu($('toolsMenu').hidden); };
+$('toolsMenu').addEventListener('click', e => {
+  if (e.target.closest('#tlOpt')) { setTimeline(!timeline); toggleToolsMenu(false); return; }
+  const o = e.target.closest('[data-tool]'); if (!o) return;
+  toggleToolsMenu(false); openTool(o.dataset.tool);
+});
+addEventListener('click', e => { if (!$('toolsPick').contains(e.target)) toggleToolsMenu(false); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('toolsMenu').hidden) { toggleToolsMenu(false); $('toolsBtn').focus(); } });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('themeMenu').hidden) { toggleThemeMenu(false); $('themeBtn').focus(); } });
 applyTheme(document.documentElement.dataset.theme);
 $('themeMenu').querySelectorAll('[data-lang]').forEach(b => b.setAttribute('aria-checked', b.dataset.lang === i18n.lang));
@@ -2825,7 +3174,8 @@ async function load() {
   pollVideos();
 }
 movePill();
-load().then(checkImport);
+const firstLoad = load();
+firstLoad.then(checkImport);
 
 // Ảnh chép vào thư mục nhập trên máy chủ (xem README): quét ngay khi mở trang, nhập xong thì tải lại lưới ảnh
 async function checkImport(waiting = false) {
@@ -2861,6 +3211,32 @@ fetch('/api/status').then(r => r.json()).then(s => {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !uploading) load().then(() => checkImport());
 });
+
+// ---------- Ứng dụng cài được (PWA): manifest.webmanifest + sw.js, xem docs/kien-truc.md mục 18 ----------
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+let installPrompt = null; // Chrome / Edge / Android: hộp "Cài đặt" của trình duyệt, chỉ có khi đủ điều kiện (HTTPS...)
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
+addEventListener('appinstalled', () => { installPrompt = null; $('installOpt').hidden = true; toast(t('Đã cài, mở từ màn hình chính hoặc danh sách ứng dụng')); });
+$('installOpt').hidden = standalone;
+// Service worker chỉ chạy trên HTTPS hoặc localhost
+if ('serviceWorker' in navigator && isSecureContext) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('sw', e));
+// Android: ảnh / video chia sẻ vào ứng dụng nằm trong Cache "share-inbox" (sw.js cất), lấy ra rồi tải lên
+async function takeSharedFiles() {
+  if (!new URLSearchParams(location.search).has('shared')) return;
+  history.replaceState(null, '', location.pathname);
+  if (!('caches' in window)) return;
+  try {
+    const cache = await caches.open('share-inbox'), files = [];
+    for (const req of await cache.keys()) {
+      const r = await cache.match(req);
+      if (r) files.push(new File([await r.blob()], decodeURIComponent(r.headers.get('X-Name') || 'shared'),
+        { type: r.headers.get('Content-Type') || '', lastModified: Number(r.headers.get('X-Modified')) || Date.now() }));
+      await cache.delete(req);
+    }
+    if (files.length) addFiles(files);
+  } catch (e) { console.error(e); toast(t('Không đọc được ảnh vừa chia sẻ')); }
+}
+firstLoad.then(takeSharedFiles);
 </script>
 </body>
 </html>
