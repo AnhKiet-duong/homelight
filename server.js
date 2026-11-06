@@ -449,6 +449,16 @@ function isLocalRequest(req) {
   return loopback && !req.headers['x-forwarded-for'];
 }
 
+// Đặt lại mật khẩu khi quên: chỉ trên máy chạy server, mở bằng localhost / 127.0.0.1.
+// Kiểm tra thêm Host và Origin để trang web lạ (DNS rebinding) không lợi dụng được trình duyệt trên máy này.
+function isLocalBrowser(req) {
+  if (!isLocalRequest(req)) return false;
+  const host = (req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(host)) return false;
+  const origin = req.headers.origin;
+  return !origin || origin.toLowerCase() === `http://${(req.headers.host || '').toLowerCase()}`;
+}
+
 // ---------- Helpers ----------
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
@@ -599,6 +609,7 @@ async function authApi(req, res, parts, session) {
       prefs: session ? { dataSaver: false, ...session.user.prefs } : null, // tuỳ chọn riêng của tài khoản; chỉ có lang khi đã lưu
       needsSetup: users.length === 0,
       canSetup: users.length === 0 && isLocalRequest(req),
+      canReset: users.length > 0 && isLocalBrowser(req), // hiện nút "Quên mật khẩu?"
     });
   }
 
@@ -627,6 +638,28 @@ async function authApi(req, res, parts, session) {
     loginFails.delete(name);
     const token = createSession(user.id);
     return send(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(req, token, SESSION_MS / 1000) });
+  }
+
+  // POST /api/reset-password — quên mật khẩu: đặt mật khẩu mới, chỉ làm được ngay trên máy chạy server
+  if (action === 'reset-password' && req.method === 'POST') {
+    if (!isLocalBrowser(req)) throw httpError(403, 'Chỉ đặt lại được mật khẩu khi mở trang ngay trên máy chạy server (http://localhost)');
+    const body = await readJsonBody(req);
+    const name = typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
+    const user = users.find(u => u.username === name);
+    if (!user) throw httpError(404, 'Không có tài khoản với tên đăng nhập này');
+    Object.assign(user, await hashPassword(validPassword(body.password)));
+    await saveUsers();
+    await dropSessions(user.id); // đăng xuất mọi thiết bị đang dùng mật khẩu cũ
+    loginFails.delete(name);
+    console.log(`Đã đặt lại mật khẩu cho "${user.username}" từ máy chủ.`);
+    const token = createSession(user.id);
+    return send(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(req, token, SESSION_MS / 1000) });
+  }
+
+  // GET /api/reset-users — tên các tài khoản để chọn khi đặt lại (chỉ trên máy chủ)
+  if (action === 'reset-users' && req.method === 'GET') {
+    if (!isLocalBrowser(req)) throw httpError(403, 'Chỉ đặt lại được mật khẩu khi mở trang ngay trên máy chạy server (http://localhost)');
+    return send(res, 200, users.map(u => ({ username: u.username, role: u.role })));
   }
 
   // POST /api/logout
@@ -770,7 +803,8 @@ function findPublicPhoto(ownerId, file) {
 async function photosApi(req, res, parts, uid) {
   if (parts.length > 3) throw httpError(404, 'Not found');
   const id = parts[2];
-  const photos = getPhotos(uid);
+  // Không giữ danh sách ảnh qua một await: xoá ảnh / quét ổ ngoài thay mảng bằng mảng mới trong lúc chờ,
+  // lưu mảng cũ sẽ làm ảnh đã xoá hiện lại và mất ảnh vừa thêm -> luôn lấy lại getPhotos(uid) ngay trước khi sửa / lưu
 
   // GET /api/photos — danh sách ảnh
   if (req.method === 'GET' && !id) return send(res, 200, visiblePhotos(uid).map(p => photoView(p)));
@@ -779,7 +813,7 @@ async function photosApi(req, res, parts, uid) {
   if (req.method === 'POST' && id === 'bulk') {
     const body = await readJsonBody(req);
     if (!Array.isArray(body.ids) || typeof body.public !== 'boolean') throw httpError(400, 'Cần danh sách ảnh và trạng thái công khai');
-    const ids = new Set(body.ids);
+    const ids = new Set(body.ids), photos = getPhotos(uid);
     let updated = 0;
     for (const p of photos) if (ids.has(p.id) && !!p.public !== body.public) { p.public = body.public; updated++; }
     if (updated) await savePhotos(uid, photos);
@@ -817,28 +851,32 @@ async function photosApi(req, res, parts, uid) {
       fav: false,
       public: false, // true: mọi tài khoản đều xem và tải được
     };
+    const photos = getPhotos(uid); // lấy lại sau các await ở trên (nhận file có thể mất cả phút khi mạng chậm)
     photos.push(photo);
     await savePhotos(uid, photos);
     makeThumbs(uid, photo);
     return send(res, 201, photoView(photo));
   }
 
-  const photo = photos.find(p => p.id === id);
+  const findPhoto = () => getPhotos(uid).find(p => p.id === id);
+  let photo = findPhoto();
   if (!photo) return send(res, 404, { error: 'Không tìm thấy ảnh' });
 
   // PATCH /api/photos/:id — sửa tên / yêu thích
   if (req.method === 'PATCH') {
     const body = await readJsonBody(req);
+    photo = findPhoto(); // có thể vừa bị xoá trong lúc đọc body
+    if (!photo) return send(res, 404, { error: 'Không tìm thấy ảnh' });
     if (typeof body.fav === 'boolean') photo.fav = body.fav;
     if (typeof body.public === 'boolean') photo.public = body.public;
     if (typeof body.name === 'string' && body.name.trim()) photo.name = body.name.trim().slice(0, 200);
-    await savePhotos(uid, photos);
+    await savePhotos(uid, getPhotos(uid));
     return send(res, 200, photoView(photo));
   }
 
   // DELETE /api/photos/:id — xoá luôn khỏi các album
   if (req.method === 'DELETE') {
-    await savePhotos(uid, photos.filter(p => p.id !== id));
+    await savePhotos(uid, getPhotos(uid).filter(p => p.id !== id));
     const albums = getAlbums(uid);
     if (albums.some(a => a.photoIds.includes(id))) {
       for (const a of albums) {
@@ -948,19 +986,20 @@ function ownPhotoIds(v, photos) {
 async function albumsApi(req, res, parts, uid) {
   if (parts.length > 3) throw httpError(404, 'Not found');
   const id = parts[2];
-  const photos = getPhotos(uid);
-  const albums = getAlbums(uid);
+  // Như photosApi: lấy lại getPhotos / getAlbums sau mỗi await (xoá album / ảnh thay mảng bằng mảng mới)
 
   // GET /api/albums
   if (req.method === 'GET' && !id) {
     // Album tạo từ thư mục trên ổ ngoài: ẩn khi rút ổ (trống)
     const shown = visiblePhotos(uid);
+    const albums = getAlbums(uid);
     return send(res, 200, albums.map(a => albumView(a, shown)).filter((v, i) => !(albums[i].link && !v.photoIds.length)));
   }
 
   // POST /api/albums — { name, photoIds? }
   if (req.method === 'POST' && !id) {
     const body = await readJsonBody(req);
+    const photos = getPhotos(uid), albums = getAlbums(uid);
     if (albums.length >= 500) throw httpError(400, 'Đã có quá nhiều album');
     const album = { id: crypto.randomBytes(6).toString('hex'), name: albumName(body.name), photoIds: [...new Set(ownPhotoIds(body.photoIds, photos))], cover: null, created: Date.now() };
     albums.push(album);
@@ -968,25 +1007,29 @@ async function albumsApi(req, res, parts, uid) {
     return send(res, 201, albumView(album, photos));
   }
 
-  const album = albums.find(a => a.id === id);
+  const findAlbum = () => getAlbums(uid).find(a => a.id === id);
+  let album = findAlbum();
   if (!album) throw httpError(404, 'Không tìm thấy album');
 
   // PATCH /api/albums/:id — { name?, add?: [...], remove?: [...], cover? }
   if (req.method === 'PATCH') {
     const body = await readJsonBody(req);
+    album = findAlbum(); // có thể vừa bị xoá trong lúc đọc body
+    if (!album) throw httpError(404, 'Không tìm thấy album');
+    const photos = getPhotos(uid);
     if (body.name !== undefined) album.name = albumName(body.name);
     const add = ownPhotoIds(body.add, photos);
     const remove = new Set(ownPhotoIds(body.remove, photos));
     album.photoIds = [...new Set([...album.photoIds, ...add])].filter(x => !remove.has(x));
     if (body.cover !== undefined) album.cover = album.photoIds.includes(body.cover) ? body.cover : null;
     if (remove.has(album.cover)) album.cover = null;
-    await saveAlbums(uid, albums);
-    return send(res, 200, albumView(album, photos));
+    await saveAlbums(uid, getAlbums(uid));
+    return send(res, 200, albumView(album, getPhotos(uid)));
   }
 
   // DELETE /api/albums/:id — chỉ xoá album, ảnh vẫn còn
   if (req.method === 'DELETE') {
-    await saveAlbums(uid, albums.filter(a => a.id !== id));
+    await saveAlbums(uid, getAlbums(uid).filter(a => a.id !== id));
     return send(res, 200, { ok: true });
   }
 

@@ -1,6 +1,7 @@
 i18n.add({
   'Đăng nhập · My Gallery': 'Sign in · My Gallery',
   'Chào mừng trở lại': 'Welcome back',
+  'Album ảnh': 'Photo album',
   'Đăng nhập để xem bộ sưu tập của bạn.': 'Sign in to see your collection.',
   'Tên đăng nhập': 'Username',
   'Mật khẩu': 'Password',
@@ -18,4 +19,13 @@ i18n.add({
   'Hai mật khẩu không khớp.': "Passwords don't match.",
   'Chưa có tài khoản': 'No accounts yet',
   'Không kết nối được server.': "Can't reach the server.",
+  'Quên mật khẩu?': "Forgot password?",
+  'Quay lại đăng nhập': "Back to sign in",
+  'Đặt lại mật khẩu': "Reset password",
+  'Bạn đang mở trang ngay trên máy chạy server nên có thể đặt mật khẩu mới cho bất kỳ tài khoản nào. Các thiết bị khác đang đăng nhập tài khoản đó sẽ bị đăng xuất.': "You're on the machine running the server, so you can set a new password for any account. Other devices signed in to that account will be signed out.",
+  'Mật khẩu mới': "New password",
+  'Đặt mật khẩu mới': "Set new password",
+  'Quản trị viên': "Admin",
+  'Không có tài khoản với tên đăng nhập này': "No account with this username",
+  'Chỉ đặt lại được mật khẩu khi mở trang ngay trên máy chạy server (http://localhost)': "Passwords can only be reset from the machine running the server (http://localhost)",
 });

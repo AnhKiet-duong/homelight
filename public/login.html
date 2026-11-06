@@ -3,29 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#07070a">
+<meta name="theme-color" content="#f4efe6">
 <title>Đăng nhập · My Gallery</title>
 <script src="/i18n.js"></script>
 <script src="/i18n/login.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600&family=Oswald:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,400;1,500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600&family=Noto+Serif+Display:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
 <style>
+  /* Giao diện "Album giấy" (giống giao diện 2 của gallery): nền giấy sáng, chữ kiểu tạp chí */
   :root {
-    --bg: #07070a;
-    --surface: rgba(255,255,255,.04);
-    --surface-2: rgba(255,255,255,.08);
-    --line: rgba(255,255,255,.09);
-    --text: #f3f1ec;
-    --muted: rgba(243,241,236,.56);
-    --faint: rgba(243,241,236,.32);
-    --gold: #ffc27a;
-    --danger: #ff8a7a;
+    --bg: #f4efe6; --paper-2: #ebe4d6; --card: #fbf8f2;
+    --line: #d9d0bf; --text: #1f1c17; --muted: #5b544a; --faint: #958c7e;
+    --gold: #b4532a; --danger: #b3261e;
     --ease: cubic-bezier(.2,.8,.2,1);
-    --display: "Oswald", "Arial Narrow", sans-serif;
-    --serif: "Playfair Display", Georgia, serif;
+    --serif: "Noto Serif Display", Georgia, serif;
     --sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
-    color-scheme: dark;
+    color-scheme: light;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; min-height: 100%; }
@@ -34,78 +28,83 @@
     -webkit-font-smoothing: antialiased; min-height: 100svh; display: grid; place-items: center;
     padding: 24px 16px; overflow-x: hidden;
   }
+  ::selection { background: rgb(180 83 42 / .2); }
   button { font: inherit; color: inherit; cursor: pointer; }
   svg { width: 18px; height: 18px; flex: none; }
 
-  .mesh { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-  .mesh i { position: absolute; width: 55vmax; height: 55vmax; border-radius: 50%; filter: blur(100px); opacity: .32; }
-  .mesh i:nth-child(1) { background: #ff8a5b; left: -20%; top: -25%; animation: drift 16s ease-in-out infinite alternate; }
-  .mesh i:nth-child(2) { background: #7b5cff; right: -25%; bottom: -30%; animation: drift 20s ease-in-out infinite alternate-reverse; }
-  @keyframes drift { to { transform: translate(8vmax, -6vmax) scale(1.15); } }
-
   .card {
-    width: 100%; max-width: 400px; padding: 36px 32px 30px; border-radius: 24px;
-    background: rgba(12,12,16,.72); border: 1px solid var(--line);
-    backdrop-filter: blur(24px) saturate(1.3); -webkit-backdrop-filter: blur(24px) saturate(1.3);
-    box-shadow: 0 30px 90px -20px rgba(0,0,0,.7);
+    position: relative; width: 100%; max-width: 420px; padding: 34px 34px 26px;
+    background: var(--card); border-top: 2px solid var(--text);
+    box-shadow: 0 1px 0 var(--line), 0 24px 50px -30px rgba(60,40,20,.45);
   }
-  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; }
-  .brand .mark {
-    width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
-    background: linear-gradient(135deg, var(--gold), #fff 140%); color: #111;
-    box-shadow: 0 6px 24px rgba(255,194,122,.45);
-  }
-  .brand b { font-family: var(--display); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; font-size: 15px; }
-  h1 { margin: 0 0 6px; font-family: var(--serif); font-style: italic; font-weight: 400; font-size: 30px; line-height: 1.15; }
-  .sub { margin: 0 0 24px; color: var(--muted); font-size: 14px; }
+  /* Hai tờ giấy lót phía sau, như ảnh xếp chồng trong album */
+  .card::before, .card::after { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--card); box-shadow: 0 0 0 1px var(--line); }
+  .card::before { transform: rotate(-2.2deg) translate(-6px, 6px); background: var(--paper-2); }
+  .card::after { transform: rotate(1.4deg) translate(4px, 4px); }
+  .mast { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 12px; margin-bottom: 26px; border-bottom: 1px solid var(--line); }
+  .mast b { font-family: var(--serif); font-style: italic; font-weight: 400; font-size: 19px; }
+  .mast span { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .kicker { font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--gold); }
+  h1 { margin: 8px 0 6px; font-family: var(--serif); font-weight: 300; font-size: 36px; line-height: 1.15; letter-spacing: -.01em; }
+  .sub { margin: 0 0 24px; color: var(--muted); font-family: var(--serif); font-style: italic; font-size: 16px; }
 
-  label { display: block; font-size: 12px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
-  .field { margin-bottom: 16px; }
+  label { display: block; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .field { margin-bottom: 18px; }
   input {
-    width: 100%; height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line);
-    background: var(--surface); color: var(--text); font: inherit; outline: none;
-    transition: border-color .2s, background .2s;
+    width: 100%; height: 42px; padding: 0 2px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+    background: transparent; color: var(--text); font: inherit; font-size: 16px; outline: none;
+    transition: border-color .2s;
   }
-  input:focus { border-color: rgba(255,194,122,.6); background: var(--surface-2); }
+  input:focus { border-bottom-color: var(--text); box-shadow: 0 1px 0 var(--text); }
   .hint { font-size: 12px; color: var(--faint); margin-top: 6px; }
 
   .btn {
-    width: 100%; height: 48px; margin-top: 8px; border-radius: 999px; border: 0;
-    background: var(--text); color: #0b0b0d; font-weight: 600; font-size: 15px;
+    width: 100%; height: 46px; margin-top: 10px; border-radius: 999px; border: 1px solid var(--text);
+    background: var(--text); color: var(--bg); font-weight: 500; font-size: 15px;
     transition: background .25s, box-shadow .25s, transform .25s var(--ease);
   }
-  .btn:hover { background: #fff; box-shadow: 0 10px 40px rgba(255,194,122,.45); }
+  .btn:hover { background: #000; box-shadow: 0 8px 20px -10px rgba(60,40,20,.6); }
   .btn:active { transform: scale(.98); }
   .btn:disabled { opacity: .5; pointer-events: none; }
-  :is(.btn, input, .lang button):focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+  :is(.btn, .lang button):focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+  input:focus-visible { outline: none; }
 
-  .error { min-height: 20px; margin: 4px 0 0; font-size: 13px; color: var(--danger); }
-  .note { padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  .error { min-height: 20px; margin: 6px 0 0; font-size: 13px; color: var(--danger); }
+  .note { padding: 14px 16px; background: var(--bg); border-left: 2px solid var(--gold); color: var(--muted); font-size: 14px; }
   .note b { color: var(--text); font-weight: 500; }
   /* Chọn ngôn ngữ */
-  .lang { display: flex; justify-content: center; gap: 4px; margin-top: 18px; }
-  .lang button { height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 13px; transition: background .2s, color .2s; }
+  .lang { display: flex; justify-content: center; gap: 18px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .lang button { height: 32px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--faint); font-size: 13px; transition: color .2s, border-color .2s; }
   .lang button:hover { color: var(--text); }
-  .lang button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
+  .lang button[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--gold); }
+  /* Quên mật khẩu (chỉ hiện trên máy chạy server) */
+  .link { display: block; margin: 6px auto 0; padding: 6px 10px; border: 0; background: none; color: var(--muted); font-family: var(--serif); font-style: italic; font-size: 15px; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
+  .link:hover { color: var(--gold); text-decoration-color: currentColor; }
+  .link:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   [hidden] { display: none !important; }
+  @media (max-width: 480px) {
+    .card { padding: 28px 22px 22px; }
+    .card::before, .card::after { display: none; }
+    h1 { font-size: 30px; }
+  }
 </style>
 </head>
 <body>
-<div class="mesh" aria-hidden="true"><i></i><i></i></div>
-
 <main class="card">
-  <div class="brand">
-    <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg></span>
+  <header class="mast">
     <b>My Gallery</b>
-  </div>
+    <span id="today"></span>
+  </header>
 
+  <div class="kicker" id="kicker">Album ảnh</div>
   <h1 id="title">Chào mừng trở lại</h1>
   <p class="sub" id="sub">Đăng nhập để xem bộ sưu tập của bạn.</p>
 
   <form id="form" novalidate>
     <div class="field">
       <label for="username">Tên đăng nhập</label>
-      <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required list="userList">
+      <datalist id="userList"></datalist>
     </div>
     <div class="field">
       <label for="password">Mật khẩu</label>
@@ -118,6 +117,8 @@
     </div>
     <button class="btn" id="submit" type="submit">Đăng nhập</button>
     <p class="error" id="error" role="alert"></p>
+    <button class="link" id="forgot" type="button" hidden>Quên mật khẩu?</button>
+    <button class="link" id="back" type="button" hidden>Quay lại đăng nhập</button>
   </form>
 
   <div class="note" id="remoteSetup" hidden>
@@ -133,7 +134,8 @@
 <script>i18n.apply()</script>
 <script>
 const $ = id => document.getElementById(id);
-let mode = 'login'; // 'login' | 'setup'
+let mode = 'login'; // 'login' | 'setup' | 'reset'
+$('today').textContent = new Intl.DateTimeFormat(i18n.locale, { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
 
 // Chưa có tài khoản nên chỉ lưu vào máy; đăng nhập xong sẽ lưu sang tài khoản
 document.querySelectorAll('.lang button').forEach(b => {
@@ -141,10 +143,17 @@ document.querySelectorAll('.lang button').forEach(b => {
   b.onclick = () => { if (b.dataset.lang !== i18n.lang) i18n.set(b.dataset.lang); };
 });
 
-// Chỉ quay lại đường dẫn nội bộ, tránh bị chuyển sang trang lạ
+// Chỉ quay lại đường dẫn nội bộ, tránh bị chuyển sang trang lạ.
+// Để trình duyệt tự phân tích rồi so origin: "/\\trang-la.com" hay "/<tab>/trang-la.com" trông như đường dẫn nội bộ
+// nhưng trình duyệt hiểu thành //trang-la.com
 function nextUrl() {
   const n = new URLSearchParams(location.search).get('next') || '/';
-  return n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/login.html') ? n : '/';
+  try {
+    if (!n.startsWith('/')) return '/';
+    const u = new URL(n, location.origin);
+    if (u.origin !== location.origin || u.pathname.startsWith('/login.html')) return '/';
+    return u.pathname + u.search + u.hash;
+  } catch { return '/'; }
 }
 
 async function post(path, body) {
@@ -164,16 +173,39 @@ function setupMode() {
   $('submit').textContent = t('Tạo tài khoản');
 }
 
+// Quên mật khẩu: server chỉ cho làm khi mở bằng http://localhost ngay trên máy chạy server
+async function resetMode() {
+  mode = 'reset';
+  $('title').textContent = t('Đặt lại mật khẩu');
+  $('sub').textContent = t('Bạn đang mở trang ngay trên máy chạy server nên có thể đặt mật khẩu mới cho bất kỳ tài khoản nào. Các thiết bị khác đang đăng nhập tài khoản đó sẽ bị đăng xuất.');
+  $('password').value = ''; $('confirm').value = '';
+  $('password').autocomplete = 'new-password';
+  document.querySelector('label[for="password"]').textContent = t('Mật khẩu mới');
+  $('pwHint').hidden = false;
+  $('confirmField').hidden = false;
+  $('submit').textContent = t('Đặt mật khẩu mới');
+  $('forgot').hidden = true; $('back').hidden = false;
+  $('error').textContent = '';
+  try {
+    const list = await (await fetch('/api/reset-users')).json();
+    $('userList').replaceChildren(...list.map(u => Object.assign(document.createElement('option'), { value: u.username, label: u.role === 'admin' ? t('Quản trị viên') : '' })));
+    if (!$('username').value) { const a = list.find(u => u.role === 'admin'); if (a) $('username').value = a.username; }
+  } catch {}
+  $('password').focus();
+}
+$('forgot').onclick = resetMode;
+$('back').onclick = () => location.reload();
+
 $('form').onsubmit = async e => {
   e.preventDefault();
   $('error').textContent = '';
   const username = $('username').value.trim().toLowerCase();
   const password = $('password').value;
   if (!username || !password) { $('error').textContent = t('Hãy nhập tên đăng nhập và mật khẩu.'); return; }
-  if (mode === 'setup' && password !== $('confirm').value) { $('error').textContent = t('Hai mật khẩu không khớp.'); return; }
+  if (mode !== 'login' && password !== $('confirm').value) { $('error').textContent = t('Hai mật khẩu không khớp.'); return; }
   $('submit').disabled = true;
   try {
-    await post(mode === 'setup' ? '/api/setup' : '/api/login', { username, password });
+    await post({ setup: '/api/setup', reset: '/api/reset-password' }[mode] || '/api/login', { username, password });
     location.replace(nextUrl());
   } catch (err) {
     $('error').textContent = err.message;
@@ -186,6 +218,7 @@ $('form').onsubmit = async e => {
     const s = await (await fetch('/api/status')).json();
     if (s.user) return location.replace(nextUrl());
     if (s.canSetup) setupMode();
+    else if (s.canReset) $('forgot').hidden = false;
     else if (s.needsSetup) { $('form').hidden = true; $('sub').hidden = true; $('title').textContent = t('Chưa có tài khoản'); $('remoteSetup').hidden = false; return; }
   } catch {
     $('error').textContent = t('Không kết nối được server.');

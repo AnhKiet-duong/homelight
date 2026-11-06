@@ -13,7 +13,7 @@ Khi sửa code làm thay đổi điều gì ở đây, sửa tài liệu này tr
 
 - Node.js ≥ 18, **không framework, không build**. Một file server (`server.js`) dùng `http.createServer(handle)`.
 - Hai module phụ: `media.js` (ảnh: nhận dạng, EXIF, ảnh nhỏ WebP bằng sharp) và `video.js` (ffmpeg/ffprobe, HLS).
-- Giao diện: 4 trang HTML độc lập trong `public/` (`index.html`, `account.html`, `login.html`, `slideshow.html`),
+- Giao diện: 5 trang HTML độc lập trong `public/` (`index.html`, `account.html`, `login.html`, `slideshow.html`, `slideshow-paper.html`),
   mỗi trang tự có `<style>` và `<script>`. Script dùng chung duy nhất là `public/i18n.js`; các hàm như `api()`, `toast()`
   bị chép lặp giữa các trang: sửa một chỗ phải sửa các bản chép.
 - Thư viện tuỳ chọn (optionalDependencies): `sharp` (ảnh nhỏ), `heic-decode` (ảnh HEIC iPhone),
@@ -33,7 +33,8 @@ Khi sửa code làm thay đổi điều gì ở đây, sửa tài liệu này tr
 | `public/index.html` | Gallery: lưới ảnh, album, chia sẻ, tải lên, lightbox (zoom), trình phát video, chủ đề, tiết kiệm dữ liệu |
 | `public/account.html` | Tài khoản, ngôn ngữ, mật khẩu; admin: người dùng, cổng, chất lượng video, ổ cứng ngoài |
 | `public/login.html` | Đăng nhập, tạo admin đầu tiên, chọn ngôn ngữ trước khi đăng nhập |
-| `public/slideshow.html` | Trình chiếu 3D, tự đọc `/api/photos` |
+| `public/slideshow.html` | Trình chiếu 3D, tự đọc `/api/photos`; chỉ giao diện Điện ảnh mở trang này |
+| `public/slideshow-paper.html` | Trình chiếu kiểu Album giấy (ảnh in rơi chồng lên nhau), mặc định cho mọi giao diện khác; dùng chung `i18n/slideshow.js` và cài đặt `slideshow-*` trong localStorage |
 | `public/i18n.js` + `public/i18n/*.js` | Hệ thống đa ngôn ngữ (mục 10) |
 | `public/vendor/hls.light.min.js` | hls.js 1.7.3 dự phòng khi CDN lỗi (đổi phiên bản thì đổi cả URL CDN trong index.html) |
 
@@ -455,7 +456,7 @@ trên file gốc): `dropThumbs`, `removeLink`, việc xoá thư mục HLS trong 
 Các trang khác:
 - `account.html`: panel admin chỉ ẩn/hiện phía trình duyệt. Người dùng thường vẫn quét lại / ngắt được ổ của mình.
 - `login.html`: chỉ đi theo `next` bắt đầu bằng `/`, không phải `//`.
-- `slideshow.html`: tham số `?album=&fav=1&start=`; tự chọn cỡ ảnh theo màn hình và tiết kiệm dữ liệu trong localStorage
+- `slideshow.html` / `slideshow-paper.html`: `slideUrl()` trong index.html chọn trang theo giao diện; tham số `?album=&fav=1&start=`; tự chọn cỡ ảnh theo màn hình và tiết kiệm dữ liệu trong localStorage
   (không dùng `forScreen`); không lọc video (video hiện như ảnh tĩnh).
 
 ---

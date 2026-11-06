@@ -13,6 +13,8 @@ node server.js
 
 Open `http://localhost:3000` **on the machine running the server** to create the first admin account (for safety, this step can't be done from another device). Then go to **Account** to add other users.
 
+**Forgot your password?** Open `http://localhost:3000` **on the machine running the server** and click **Forgot password?** under the sign-in button. You can set a new password for any account (admin included); other devices signed in to that account are signed out. The link only appears when the page is opened as `localhost` / `127.0.0.1` on that machine, so it can't be used from another device or through Tailscale Funnel.
+
 **Changing the port:** as an admin, go to **Account → Server port** and enter a new port (1024–65535). The server opens the new port immediately without a restart, the page redirects to the new address, and the port is saved in `storage/settings.json` for future runs. If you start with `PORT=8080 node server.js`, the `PORT` variable takes priority and can't be changed from the page. Delete `storage/settings.json` to go back to port 3000.
 
 Other devices on the same Wi‑Fi network can open the IP address the server prints. To reach the gallery from anywhere while keeping your photos on your own machine, see [docs/truy-cap-tu-xa.md](docs/truy-cap-tu-xa.md) (in Vietnamese).

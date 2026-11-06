@@ -1632,16 +1632,18 @@ function updateStats() {
   }
   document.querySelectorAll('.slide-link').forEach(l => {
     l.setAttribute('aria-disabled', photos.length ? 'false' : 'true');
-    l.href = 'slideshow.html' + slideQuery();
+    l.href = slideUrl();
   });
 }
 
-function slideQuery(start) {
+// Giao diện Điện ảnh dùng trình chiếu 3D; mọi giao diện khác dùng trình chiếu kiểu Album giấy
+function slideUrl(start) {
   const q = new URLSearchParams();
   if (start) q.set('start', start);
   if (mode === 'fav') q.set('fav', '1');
   if (curAlbum()) q.set('album', albumId);
-  return q.size ? '?' + q : '';
+  const page = document.documentElement.dataset.theme === 'cinema' ? 'slideshow.html' : 'slideshow-paper.html';
+  return page + (q.size ? '?' + q : '');
 }
 
 // ---------- Giao diện Ô màu: thống kê, "ngày này năm trước", thanh bên ----------
@@ -2418,7 +2420,7 @@ $('lbFull').onclick = () => {
   loadSharp(p, p.url);
 };
 $('lbDownload').onclick = () => { const p = view[current], a = document.createElement('a'); a.href = p.url; a.download = p.name; a.click(); };
-$('lbSlide').onclick = () => { location.href = 'slideshow.html' + slideQuery(view[current].id); };
+$('lbSlide').onclick = () => { location.href = slideUrl(view[current].id); };
 $('lbStage').addEventListener('click', e => { if (e.target === e.currentTarget && !zEat && zoom.s === 1) closeLB(); }); // kéo/chụm không tính là bấm; đang phóng thì bấm ra ngoài không đóng
 addEventListener('keydown', e => {
   if (!lb.classList.contains('open')) return;
@@ -2785,6 +2787,7 @@ function applyTheme(t) {
   document.querySelector('meta[name="theme-color"]').content = { paper: '#f4efe6', bento: '#eceff5' }[t] || '#07070a';
   $('themeMenu').querySelectorAll('.opt[data-theme]').forEach(o => o.setAttribute('aria-checked', o.dataset.theme === t));
   movePill();
+  if (changed) document.querySelectorAll('.slide-link').forEach(l => { l.href = slideUrl(); }); // đổi giữa trình chiếu 3D và kiểu giấy
   if (changed && photos.length) render(); // Ô màu chia nhóm theo tháng, hai giao diện kia theo năm
 }
 function toggleThemeMenu(open) {
